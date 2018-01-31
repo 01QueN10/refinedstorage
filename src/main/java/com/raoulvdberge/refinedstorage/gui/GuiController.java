@@ -4,6 +4,7 @@ import com.raoulvdberge.refinedstorage.container.ContainerController;
 import com.raoulvdberge.refinedstorage.gui.sidebutton.SideButtonRedstoneMode;
 import com.raoulvdberge.refinedstorage.tile.ClientNode;
 import com.raoulvdberge.refinedstorage.tile.TileController;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
 
@@ -34,8 +35,10 @@ public class GuiController extends GuiBase {
 
     @Override
     public void update(int x, int y) {
-        scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
-        scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        if (scrollbar != null) {
+            scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
+            scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        }
     }
 
     @Override
@@ -57,7 +60,7 @@ public class GuiController extends GuiBase {
         int x = 33;
         int y = 26;
 
-        int slot = scrollbar.getOffset() * 2;
+        int slot = scrollbar != null ? (scrollbar.getOffset() * 2) : 0;
 
         RenderHelper.enableGUIStandardItemLighting();
 
@@ -71,13 +74,13 @@ public class GuiController extends GuiBase {
 
                 drawItem(x, y + 5, node.getStack());
 
-                float scale = 0.5f;
+                float scale = fontRenderer.getUnicodeFlag() ? 1F : 0.5F;
 
                 GlStateManager.pushMatrix();
                 GlStateManager.scale(scale, scale, 1);
 
-                drawString(calculateOffsetOnScale(x + 1, scale), calculateOffsetOnScale(y - 2, scale), node.getStack().getDisplayName());
-                drawString(calculateOffsetOnScale(x + 21, scale), calculateOffsetOnScale(y + 10, scale), node.getAmount() + "x");
+                drawString(RenderUtils.getOffsetOnScale(x + 1, scale), RenderUtils.getOffsetOnScale(y - 2, scale), trimNameIfNeeded(!fontRenderer.getUnicodeFlag(), node.getStack().getDisplayName()));
+                drawString(RenderUtils.getOffsetOnScale(x + 21, scale), RenderUtils.getOffsetOnScale(y + 10, scale), node.getAmount() + "x");
 
                 GlStateManager.popMatrix();
 
@@ -107,5 +110,13 @@ public class GuiController extends GuiBase {
 
     private int getRows() {
         return Math.max(0, (int) Math.ceil((float) TileController.NODES.getValue().size() / 2F));
+    }
+
+    private String trimNameIfNeeded(boolean scaled, String name) {
+        int max = scaled ? 20 : 13;
+        if (name.length() > max) {
+            name = name.substring(0, max) + "...";
+        }
+        return name;
     }
 }

@@ -1,6 +1,6 @@
 package com.raoulvdberge.refinedstorage.render;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.block.model.IBakedModel;
@@ -8,7 +8,6 @@ import net.minecraft.client.renderer.block.model.ItemCameraTransforms;
 import net.minecraft.client.renderer.block.model.ItemOverrideList;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.EnumFacing;
-import net.minecraftforge.client.model.IPerspectiveAwareModel;
 import net.minecraftforge.common.model.TRSRTransformation;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -16,7 +15,7 @@ import javax.annotation.Nullable;
 import javax.vecmath.Matrix4f;
 import java.util.List;
 
-public class BakedModelPortableGrid implements IPerspectiveAwareModel {
+public class BakedModelPortableGrid implements IBakedModel {
     private IBakedModel base;
 
     public BakedModelPortableGrid(IBakedModel base) {
@@ -25,9 +24,9 @@ public class BakedModelPortableGrid implements IPerspectiveAwareModel {
 
     @Override
     public Pair<? extends IBakedModel, Matrix4f> handlePerspective(ItemCameraTransforms.TransformType cameraTransformType) {
-        TRSRTransformation transform = RSUtils.getDefaultBlockTransforms().get(cameraTransformType);
+        TRSRTransformation transform = RenderUtils.getDefaultBlockTransforms().get(cameraTransformType);
 
-        return Pair.of(this, transform == null ? RSUtils.EMPTY_MATRIX_TRANSFORM : transform.getMatrix());
+        return Pair.of(this, transform == null ? RenderUtils.EMPTY_MATRIX_TRANSFORM : transform.getMatrix());
     }
 
     @Override

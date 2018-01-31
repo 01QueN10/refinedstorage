@@ -1,29 +1,29 @@
 package com.raoulvdberge.refinedstorage.apiimpl.storage;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.storage.IStorage;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageCache;
+import com.raoulvdberge.refinedstorage.api.storage.IStorageTracker;
 import com.raoulvdberge.refinedstorage.api.util.IStackList;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.network.MessageGridItemDelta;
 import com.raoulvdberge.refinedstorage.network.MessageGridItemUpdate;
 import com.raoulvdberge.refinedstorage.tile.grid.portable.IPortableGrid;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fml.common.network.ByteBufUtils;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.function.BiConsumer;
 
 public class StorageCacheItemPortable implements IStorageCache<ItemStack> {
     private IPortableGrid portableGrid;
     private IStackList<ItemStack> list = API.instance().createItemStackList();
-    @Nullable
-    private BiConsumer<ItemStack, Integer> listener;
+    private List<Runnable> listeners = new LinkedList<>();
 
     public StorageCacheItemPortable(IPortableGrid portableGrid) {
         this.portableGrid = portableGrid;
@@ -37,36 +37,39 @@ public class StorageCacheItemPortable implements IStorageCache<ItemStack> {
             portableGrid.getStorage().getStacks().forEach(list::add);
         }
 
+        listeners.forEach(Runnable::run);
+
         portableGrid.getWatchers().forEach(this::sendUpdateTo);
     }
 
     @Override
-    public void add(@Nonnull ItemStack stack, int size, boolean rebuilding) {
+    public void add(@Nonnull ItemStack stack, int size, boolean rebuilding, boolean batched) {
         list.add(stack, size);
 
         if (!rebuilding) {
-            portableGrid.getWatchers().forEach(w -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(null, stack, size), (EntityPlayerMP) w));
+            portableGrid.getWatchers().forEach(w -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(null, portableGrid.getStorageTracker(), stack, size), (EntityPlayerMP) w));
 
-            if (listener != null) {
-                listener.accept(stack, size);
-            }
+            listeners.forEach(Runnable::run);
         }
     }
 
     @Override
-    public void remove(@Nonnull ItemStack stack, int size) {
+    public void remove(@Nonnull ItemStack stack, int size, boolean batched) {
         if (list.remove(stack, size)) {
-            portableGrid.getWatchers().forEach(w -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(null, stack, -size), (EntityPlayerMP) w));
+            portableGrid.getWatchers().forEach(w -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(null, portableGrid.getStorageTracker(), stack, -size), (EntityPlayerMP) w));
 
-            if (listener != null) {
-                listener.accept(stack, -size);
-            }
+            listeners.forEach(Runnable::run);
         }
     }
 
     @Override
-    public void setListener(@Nullable BiConsumer<ItemStack, Integer> listener) {
-        this.listener = listener;
+    public void addListener(Runnable listener) {
+        listeners.add(listener);
+    }
+
+    @Override
+    public void removeListener(Runnable listener) {
+        listeners.remove(listener);
     }
 
     @Override
@@ -89,7 +92,14 @@ public class StorageCacheItemPortable implements IStorageCache<ItemStack> {
             buf.writeInt(list.getStacks().size());
 
             for (ItemStack stack : list.getStacks()) {
-                RSUtils.writeItemStack(buf, stack, null, false);
+                StackUtils.writeItemStack(buf, stack, null, false);
+
+                IStorageTracker.IStorageTrackerEntry entry = portableGrid.getStorageTracker().get(stack);
+                buf.writeBoolean(entry != null);
+                if (entry != null) {
+                    buf.writeLong(entry.getTime());
+                    ByteBufUtils.writeUTF8String(buf, entry.getName());
+                }
             }
         }, false), (EntityPlayerMP) player);
     }

@@ -2,57 +2,58 @@ package com.raoulvdberge.refinedstorage.gui.grid;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Multimaps;
 import com.raoulvdberge.refinedstorage.RS;
 import com.raoulvdberge.refinedstorage.RSKeyBindings;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGridTab;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNodeGrid;
-import com.raoulvdberge.refinedstorage.block.GridType;
 import com.raoulvdberge.refinedstorage.container.ContainerGrid;
 import com.raoulvdberge.refinedstorage.gui.GuiBase;
 import com.raoulvdberge.refinedstorage.gui.Scrollbar;
-import com.raoulvdberge.refinedstorage.gui.grid.filtering.GridFilterParser;
-import com.raoulvdberge.refinedstorage.gui.grid.sorting.GridSorting;
-import com.raoulvdberge.refinedstorage.gui.grid.sorting.GridSortingID;
-import com.raoulvdberge.refinedstorage.gui.grid.sorting.GridSortingName;
-import com.raoulvdberge.refinedstorage.gui.grid.sorting.GridSortingQuantity;
+import com.raoulvdberge.refinedstorage.gui.grid.sorting.Sorter;
 import com.raoulvdberge.refinedstorage.gui.grid.stack.GridStackFluid;
 import com.raoulvdberge.refinedstorage.gui.grid.stack.GridStackItem;
 import com.raoulvdberge.refinedstorage.gui.grid.stack.IGridStack;
 import com.raoulvdberge.refinedstorage.gui.sidebutton.*;
 import com.raoulvdberge.refinedstorage.integration.jei.IntegrationJEI;
 import com.raoulvdberge.refinedstorage.integration.jei.RSJEIPlugin;
-import com.raoulvdberge.refinedstorage.item.filter.FilterTab;
 import com.raoulvdberge.refinedstorage.network.*;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataManager;
-import com.raoulvdberge.refinedstorage.tile.grid.IGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.TileGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.portable.IPortableGrid;
+import com.raoulvdberge.refinedstorage.tile.grid.portable.TilePortableGrid;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
+import com.raoulvdberge.refinedstorage.util.TimeUtils;
 import net.minecraft.client.audio.PositionedSoundRecord;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.resources.I18n;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.TextFormatting;
+import net.minecraftforge.client.event.RenderTooltipEvent;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fml.client.config.GuiCheckBox;
+import net.minecraftforge.fml.client.config.GuiUtils;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import org.lwjgl.input.Keyboard;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Predicate;
 
 public class GuiGrid extends GuiBase implements IGridDisplay {
-    private static final GridSorting SORTING_QUANTITY = new GridSortingQuantity();
-    private static final GridSorting SORTING_NAME = new GridSortingName();
-    private static final GridSorting SORTING_ID = new GridSortingID();
-
     private static final List<String> SEARCH_HISTORY = new ArrayList<>();
 
     public static final ListMultimap<Item, GridStackItem> ITEMS = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
@@ -61,12 +62,19 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     public static List<IGridStack> STACKS = new ArrayList<>();
     public static boolean CAN_CRAFT;
 
-    private static boolean markedForSorting;
+    private static boolean SCHEDULE_SORT = false;
+    private Queue<Sorter> sortingQueue = new ArrayDeque<>();
 
     private boolean wasConnected;
 
     private GuiTextField searchField;
+
     private GuiCheckBox oredictPattern;
+    private GuiCheckBox processingPattern;
+    private GuiCheckBox blockingPattern;
+
+    private GuiButton tabPageLeft;
+    private GuiButton tabPageRight;
 
     private IGrid grid;
 
@@ -93,10 +101,6 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     private int[] konamiOffsetsX;
     private int[] konamiOffsetsY;
 
-    public static void markForSorting() {
-        markedForSorting = true;
-    }
-
     public GuiGrid(ContainerGrid container, IGrid grid) {
         super(container, grid.getType() == GridType.FLUID ? 193 : 227, 0);
 
@@ -119,17 +123,20 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     public void init(int x, int y) {
         ((ContainerGrid) this.inventorySlots).initSlots();
 
-        this.scrollbar = new Scrollbar(174, getTabDelta() + getHeader(), 12, (getVisibleRows() * 18) - 2);
+        this.scrollbar = new Scrollbar(174, getTabHeight() + getHeader(), 12, (getVisibleRows() * 18) - 2);
 
-        if (grid.getRedstoneModeConfig() != null) {
-            addSideButton(new SideButtonRedstoneMode(this, grid.getRedstoneModeConfig()));
+        if (grid instanceof NetworkNodeGrid || grid instanceof TilePortableGrid) {
+            addSideButton(new SideButtonRedstoneMode(this, grid instanceof NetworkNodeGrid ? TileGrid.REDSTONE_MODE : TilePortableGrid.REDSTONE_MODE));
         }
+
+        tabPageLeft = addButton(getGuiLeft(), getGuiTop() - 22, 20, 20, "<", true, grid.getTotalTabPages() > 0);
+        tabPageRight = addButton(getGuiLeft() + getXSize() - 22 - 32, getGuiTop() - 22, 20, 20, ">", true, grid.getTotalTabPages() > 0);
 
         this.konamiOffsetsX = new int[9 * getVisibleRows()];
         this.konamiOffsetsY = new int[9 * getVisibleRows()];
 
         int sx = x + 80 + 1;
-        int sy = y + 6 + 1 + getTabDelta();
+        int sy = y + 6 + 1 + getTabHeight();
 
         if (searchField == null) {
             searchField = new GuiTextField(0, fontRenderer, sx, sy, 88 - 6, fontRenderer.FONT_HEIGHT);
@@ -144,7 +151,12 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         }
 
         if (grid.getType() == GridType.PATTERN) {
-            oredictPattern = addCheckBox(x + 64, y + getTabDelta() + getHeader() + (getVisibleRows() * 18) + 46, t("misc.refinedstorage:oredict"), TileGrid.OREDICT_PATTERN.getValue());
+            processingPattern = addCheckBox(x + 7, y + getTabHeight() + getHeader() + (getVisibleRows() * 18) + 60, t("misc.refinedstorage:processing"), TileGrid.PROCESSING_PATTERN.getValue());
+            oredictPattern = addCheckBox(processingPattern.x + processingPattern.width + 5, y + getTabHeight() + getHeader() + (getVisibleRows() * 18) + 60, t("misc.refinedstorage:oredict"), TileGrid.OREDICT_PATTERN.getValue());
+
+            if (((NetworkNodeGrid) grid).isProcessingPattern()) {
+                blockingPattern = addCheckBox(oredictPattern.x + oredictPattern.width + 5, y + getTabHeight() + getHeader() + (getVisibleRows() * 18) + 60, t("misc.refinedstorage:blocking"), TileGrid.BLOCKING_PATTERN.getValue());
+            }
         }
 
         if (grid.getType() != GridType.FLUID && grid.getViewType() != -1) {
@@ -156,7 +168,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         addSideButton(new SideButtonGridSearchBoxMode(this));
         addSideButton(new SideButtonGridSize(this, grid));
 
-        sortItems();
+        scheduleSort();
     }
 
     @Override
@@ -168,49 +180,8 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         return grid;
     }
 
-    private void sortItems() {
-        List<IGridStack> stacks = new ArrayList<>();
-
-        if (grid.isActive()) {
-            stacks.addAll(grid.getType() == GridType.FLUID ? FLUIDS.values() : ITEMS.values());
-
-            List<Predicate<IGridStack>> filters = GridFilterParser.getFilters(
-                grid,
-                searchField != null ? searchField.getText() : "",
-                (grid.getTabSelected() >= 0 && grid.getTabSelected() < grid.getTabs().size()) ? grid.getTabs().get(grid.getTabSelected()).getFilters() : grid.getFilters()
-            );
-
-            Iterator<IGridStack> t = stacks.iterator();
-
-            while (t.hasNext()) {
-                IGridStack stack = t.next();
-
-                for (Predicate<IGridStack> filter : filters) {
-                    if (!filter.test(stack)) {
-                        t.remove();
-
-                        break;
-                    }
-                }
-            }
-
-            SORTING_NAME.setSortingDirection(grid.getSortingDirection());
-            SORTING_QUANTITY.setSortingDirection(grid.getSortingDirection());
-            SORTING_ID.setSortingDirection(grid.getSortingDirection());
-
-            stacks.sort(SORTING_NAME);
-
-            if (grid.getSortingType() == NetworkNodeGrid.SORTING_TYPE_QUANTITY) {
-                stacks.sort(SORTING_QUANTITY);
-            } else if (grid.getSortingType() == NetworkNodeGrid.SORTING_TYPE_ID) {
-                stacks.sort(SORTING_ID);
-            }
-        }
-
-        STACKS = stacks;
-
-        scrollbar.setEnabled(getRows() > getVisibleRows());
-        scrollbar.setMaxOffset(getRows() - getVisibleRows());
+    public static void scheduleSort() {
+        SCHEDULE_SORT = true;
     }
 
     @Override
@@ -225,13 +196,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         if (wasConnected != grid.isActive()) {
             wasConnected = grid.isActive();
 
-            markForSorting();
-        }
-
-        if (markedForSorting) {
-            markedForSorting = false;
-
-            sortItems();
+            scheduleSort();
         }
 
         boolean hasTabs = !getGrid().getTabs().isEmpty();
@@ -240,6 +205,21 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             hadTabs = hasTabs;
 
             initGui();
+        }
+
+        if (SCHEDULE_SORT) {
+            SCHEDULE_SORT = false;
+
+            sortingQueue.add(new Sorter(this));
+        }
+
+        Sorter sorter = sortingQueue.peek();
+        if (sorter != null) {
+            if (!sorter.isStarted()) {
+                sorter.start();
+            } else if (sorter.isDone()) {
+                sortingQueue.poll();
+            }
         }
     }
 
@@ -250,17 +230,25 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
 
     @Override
     public int getFooter() {
-        return (grid.getType() == GridType.CRAFTING || grid.getType() == GridType.PATTERN) ? 156 : 99;
+        if (grid.getType() == GridType.CRAFTING) {
+            return 156;
+        } else if (grid.getType() == GridType.PATTERN) {
+            return 169;
+        } else {
+            return 99;
+        }
     }
 
     @Override
     public int getYPlayerInventory() {
-        int yp = getTabDelta() + getHeader() + (getVisibleRows() * 18);
+        int yp = getTabHeight() + getHeader() + (getVisibleRows() * 18);
 
         if (grid.getType() == GridType.NORMAL || grid.getType() == GridType.FLUID) {
             yp += 16;
-        } else if (grid.getType() == GridType.CRAFTING || grid.getType() == GridType.PATTERN) {
+        } else if (grid.getType() == GridType.CRAFTING) {
             yp += 73;
+        } else if (grid.getType() == GridType.PATTERN) {
+            yp += 86;
         }
 
         return yp;
@@ -274,22 +262,22 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     @Override
     public int getVisibleRows() {
         switch (grid.getSize()) {
-            case NetworkNodeGrid.SIZE_STRETCH:
+            case IGrid.SIZE_STRETCH:
                 int screenSpaceAvailable = height - getHeader() - getFooter() - (hadTabs ? ContainerGrid.TAB_HEIGHT : 0);
 
                 return Math.max(3, Math.min((screenSpaceAvailable / 18) - 3, RS.INSTANCE.config.maxRowsStretch));
-            case NetworkNodeGrid.SIZE_SMALL:
+            case IGrid.SIZE_SMALL:
                 return 3;
-            case NetworkNodeGrid.SIZE_MEDIUM:
+            case IGrid.SIZE_MEDIUM:
                 return 5;
-            case NetworkNodeGrid.SIZE_LARGE:
+            case IGrid.SIZE_LARGE:
                 return 8;
             default:
                 return 3;
         }
     }
 
-    private boolean isOverSlotWithStack() {
+    public boolean isOverSlotWithStack() {
         return grid.isActive() && isOverSlot() && slotNumber < STACKS.size();
     }
 
@@ -298,39 +286,46 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     }
 
     public boolean isOverSlotArea(int mouseX, int mouseY) {
-        return inBounds(7, 19 + getTabDelta(), 162, 18 * getVisibleRows(), mouseX, mouseY);
+        return inBounds(7, 19 + getTabHeight(), 162, 18 * getVisibleRows(), mouseX, mouseY);
+    }
+
+    public int getSlotNumber() {
+        return slotNumber;
     }
 
     private boolean isOverClear(int mouseX, int mouseY) {
-        int y = getTabDelta() + getHeader() + (getVisibleRows() * 18) + 4;
+        int y = getTabHeight() + getHeader() + (getVisibleRows() * 18) + 4;
 
         switch (grid.getType()) {
             case CRAFTING:
                 return inBounds(82, y, 7, 7, mouseX, mouseY);
             case PATTERN:
-                return inBounds(64, y, 7, 7, mouseX, mouseY);
+                if (((NetworkNodeGrid) grid).isProcessingPattern()) {
+                    return inBounds(154, y, 7, 7, mouseX, mouseY);
+                }
+
+                return inBounds(82, y, 7, 7, mouseX, mouseY);
             default:
                 return false;
         }
     }
 
     private boolean isOverCreatePattern(int mouseX, int mouseY) {
-        return grid.getType() == GridType.PATTERN && inBounds(152, getTabDelta() + getHeader() + (getVisibleRows() * 18) + 22, 16, 16, mouseX, mouseY) && ((NetworkNodeGrid) grid).canCreatePattern();
+        return grid.getType() == GridType.PATTERN && inBounds(172, getTabHeight() + getHeader() + (getVisibleRows() * 18) + 22, 16, 16, mouseX, mouseY) && ((NetworkNodeGrid) grid).canCreatePattern();
     }
 
-    private int getTabDelta() {
+    private int getTabHeight() {
         return !grid.getTabs().isEmpty() ? ContainerGrid.TAB_HEIGHT - 4 : 0;
     }
 
-    private void drawTab(FilterTab tab, boolean foregroundLayer, int x, int y, int mouseX, int mouseY) {
-        int i = grid.getTabs().indexOf(tab);
-        boolean selected = i == grid.getTabSelected();
+    private void drawTab(IGridTab tab, boolean foregroundLayer, int x, int y, int mouseX, int mouseY, int index, int num) {
+        boolean selected = index == grid.getTabSelected();
 
         if ((foregroundLayer && !selected) || (!foregroundLayer && selected)) {
             return;
         }
 
-        int tx = x + ((ContainerGrid.TAB_WIDTH + 1) * i);
+        int tx = x + ((ContainerGrid.TAB_WIDTH + 1) * num);
         int ty = y;
 
         bindTexture("icons.png");
@@ -347,7 +342,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         if (selected) {
             uvx = 227;
 
-            if (i > 0) {
+            if (num > 0) {
                 uvx = 226;
                 uvy = 194;
                 tbw++;
@@ -361,10 +356,10 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
 
         RenderHelper.enableGUIStandardItemLighting();
 
-        drawItem(otx + 6, ty + 8 - (!selected ? 2 : 0), tab.getIcon());
+        drawItem(otx + 6, ty + 9 - (!selected ? 3 : 0), tab.getIcon());
 
-        if (inBounds(tx, ty, ContainerGrid.TAB_WIDTH, ContainerGrid.TAB_HEIGHT, mouseX, mouseY)) {
-            tabHovering = i;
+        if (inBounds(tx, ty, ContainerGrid.TAB_WIDTH, ContainerGrid.TAB_HEIGHT - (selected ? 2 : 7), mouseX, mouseY)) {
+            tabHovering = index;
         }
     }
 
@@ -372,26 +367,29 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     public void drawBackground(int x, int y, int mouseX, int mouseY) {
         tabHovering = -1;
 
-        for (FilterTab tab : grid.getTabs()) {
-            drawTab(tab, false, x, y, mouseX, mouseY);
+        int j = 0;
+        for (int i = grid.getTabPage() * IGrid.TABS_PER_PAGE; i < (grid.getTabPage() * IGrid.TABS_PER_PAGE) + IGrid.TABS_PER_PAGE; ++i) {
+            if (i < grid.getTabs().size()) {
+                drawTab(grid.getTabs().get(i), false, x, y, mouseX, mouseY, i, j++);
+            }
         }
 
         if (grid.getType() == GridType.CRAFTING) {
             bindTexture("gui/crafting_grid.png");
         } else if (grid.getType() == GridType.PATTERN) {
-            bindTexture("gui/pattern_grid.png");
+            bindTexture("gui/pattern_grid" + (((NetworkNodeGrid) grid).isProcessingPattern() ? "_processing" : "") + ".png");
         } else if (grid instanceof IPortableGrid) {
             bindTexture("gui/portable_grid.png");
         } else {
             bindTexture("gui/grid.png");
         }
 
-        int yy = y + getTabDelta();
+        int yy = y + getTabHeight();
 
         drawTexture(x, yy, 0, 0, screenWidth - (grid.getType() != GridType.FLUID ? 34 : 0), getHeader());
 
         if (grid.getType() != GridType.FLUID) {
-            drawTexture(x + screenWidth - 34 + 4, y + getTabDelta(), 197, 0, 30, grid instanceof IPortableGrid ? 114 : 82);
+            drawTexture(x + screenWidth - 34 + 4, y + getTabHeight(), 197, 0, 30, grid instanceof IPortableGrid ? 114 : 82);
         }
 
         int rows = getVisibleRows();
@@ -406,10 +404,6 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
 
         drawTexture(x, yy, 0, getHeader() + (18 * 3), screenWidth - (grid.getType() != GridType.FLUID ? 34 : 0), getFooter());
 
-        for (FilterTab tab : grid.getTabs()) {
-            drawTab(tab, true, x, y, mouseX, mouseY);
-        }
-
         if (grid.getType() == GridType.PATTERN) {
             int ty = 0;
 
@@ -421,7 +415,14 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
                 ty = 2;
             }
 
-            drawTexture(x + 152, y + getTabDelta() + getHeader() + (getVisibleRows() * 18) + 22, 240, ty * 16, 16, 16);
+            drawTexture(x + 172, y + getTabHeight() + getHeader() + (getVisibleRows() * 18) + 22, 240, ty * 16, 16, 16);
+        }
+
+        j = 0;
+        for (int i = grid.getTabPage() * IGrid.TABS_PER_PAGE; i < (grid.getTabPage() * IGrid.TABS_PER_PAGE) + IGrid.TABS_PER_PAGE; ++i) {
+            if (i < grid.getTabs().size()) {
+                drawTab(grid.getTabs().get(i), true, x, y, mouseX, mouseY, i, j++);
+            }
         }
 
         if (searchField != null) {
@@ -431,15 +432,21 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
 
     @Override
     public void drawForeground(int mouseX, int mouseY) {
-        drawString(7, 7 + getTabDelta(), t(grid.getGuiTitle()));
+        drawString(7, 7 + getTabHeight(), t(grid.getGuiTitle()));
         drawString(7, getYPlayerInventory() - 12, t("container.inventory"));
 
+        if (grid.getTotalTabPages() > 0) {
+            String text = (grid.getTabPage() + 1) + " / " + (grid.getTotalTabPages() + 1);
+
+            drawString((int) ((193F - (float) fontRenderer.getStringWidth(text)) / 2F), -16, text, 0xFFFFFF);
+        }
+
         int x = 8;
-        int y = 19 + getTabDelta();
+        int y = 19 + getTabHeight();
 
         this.slotNumber = -1;
 
-        int slot = scrollbar.getOffset() * 9;
+        int slot = scrollbar != null ? (scrollbar.getOffset() * 9) : 0;
 
         RenderHelper.enableGUIStandardItemLighting();
 
@@ -452,7 +459,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             }
 
             if (slot < STACKS.size()) {
-                STACKS.get(slot).draw(this, xx, yy, GuiScreen.isShiftKeyDown() && slotNumber == slot);
+                STACKS.get(slot).draw(this, xx, yy);
             }
 
             if (inBounds(xx, yy, 16, 16, mouseX, mouseY) || !grid.isActive()) {
@@ -480,9 +487,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         }
 
         if (isOverSlotWithStack()) {
-            IGridStack stack = STACKS.get(slotNumber);
-
-            drawTooltip(stack instanceof GridStackItem ? ((GridStackItem) stack).getStack() : ItemStack.EMPTY, mouseX, mouseY, stack.getTooltip());
+            drawGridTooltip(STACKS.get(slotNumber), mouseX, mouseY);
         }
 
         if (isOverClear(mouseX, mouseY)) {
@@ -498,12 +503,174 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         }
     }
 
+    // Copied with some tweaks from GuiUtils#drawHoveringText(@Nonnull final ItemStack stack, List<String> textLines, int mouseX, int mouseY, int screenWidth, int screenHeight, int maxTextWidth, FontRenderer font)
+    public void drawGridTooltip(IGridStack gridStack, int mouseX, int mouseY) {
+        // RS BEGIN
+        List<String> textLines = Lists.newArrayList(gridStack.getTooltip().split("\n"));
+
+        if (RS.INSTANCE.config.detailedTooltip) {
+            if (!(gridStack instanceof GridStackItem) || !((GridStackItem) gridStack).doesDisplayCraftText()) {
+                textLines.add("");
+            }
+
+            if (gridStack.getTrackerEntry() != null) {
+                textLines.add("");
+            }
+        }
+
+        ItemStack stack = gridStack instanceof GridStackItem ? ((GridStackItem) gridStack).getStack() : ItemStack.EMPTY;
+        // RS END
+
+        if (!textLines.isEmpty()) {
+            RenderTooltipEvent.Pre event = new RenderTooltipEvent.Pre(stack, textLines, mouseX, mouseY, screenWidth, screenHeight, -1, fontRenderer);
+            if (MinecraftForge.EVENT_BUS.post(event)) {
+                return;
+            }
+            mouseX = event.getX();
+            mouseY = event.getY();
+            screenWidth = event.getScreenWidth();
+            screenHeight = event.getScreenHeight();
+            FontRenderer font = event.getFontRenderer();
+
+            // RS BEGIN
+            float textScale = font.getUnicodeFlag() ? 1F : 0.7F;
+            // RS END
+
+            GlStateManager.disableRescaleNormal();
+            RenderHelper.disableStandardItemLighting();
+            GlStateManager.disableLighting();
+            GlStateManager.disableDepth();
+            int tooltipTextWidth = 0;
+
+            for (String textLine : textLines) {
+                int textLineWidth = font.getStringWidth(textLine);
+
+                if (textLineWidth > tooltipTextWidth) {
+                    tooltipTextWidth = textLineWidth;
+                }
+            }
+
+            // RS BEGIN
+            if (RS.INSTANCE.config.detailedTooltip) {
+                int size;
+
+                if (!(gridStack instanceof GridStackItem) || !((GridStackItem) gridStack).doesDisplayCraftText()) {
+                    size = (int) (font.getStringWidth(I18n.format("misc.refinedstorage:total", gridStack.getFormattedFullQuantity())) * textScale);
+
+                    if (size > tooltipTextWidth) {
+                        tooltipTextWidth = size;
+                    }
+                }
+
+                if (gridStack.getTrackerEntry() != null) {
+                    size = (int) (font.getStringWidth(TimeUtils.getAgo(gridStack.getTrackerEntry().getTime(), gridStack.getTrackerEntry().getName())) * textScale);
+
+                    if (size > tooltipTextWidth) {
+                        tooltipTextWidth = size;
+                    }
+                }
+            }
+            // RS END
+
+            int titleLinesCount = 1;
+            int tooltipX = mouseX + 12;
+
+            int tooltipY = mouseY - 12;
+            int tooltipHeight = 8;
+
+            if (textLines.size() > 1) {
+                tooltipHeight += (textLines.size() - 1) * 10;
+                if (textLines.size() > titleLinesCount) {
+                    tooltipHeight += 2;
+                }
+            }
+
+            if (tooltipY + tooltipHeight + 6 > screenHeight) {
+                tooltipY = screenHeight - tooltipHeight - 6;
+            }
+
+            final int zLevel = 300;
+            final int backgroundColor = 0xF0100010;
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY - 4, tooltipX + tooltipTextWidth + 3, tooltipY - 3, backgroundColor, backgroundColor);
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY + tooltipHeight + 3, tooltipX + tooltipTextWidth + 3, tooltipY + tooltipHeight + 4, backgroundColor, backgroundColor);
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY - 3, tooltipX + tooltipTextWidth + 3, tooltipY + tooltipHeight + 3, backgroundColor, backgroundColor);
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 4, tooltipY - 3, tooltipX - 3, tooltipY + tooltipHeight + 3, backgroundColor, backgroundColor);
+            GuiUtils.drawGradientRect(zLevel, tooltipX + tooltipTextWidth + 3, tooltipY - 3, tooltipX + tooltipTextWidth + 4, tooltipY + tooltipHeight + 3, backgroundColor, backgroundColor);
+            final int borderColorStart = 0x505000FF;
+            final int borderColorEnd = (borderColorStart & 0xFEFEFE) >> 1 | borderColorStart & 0xFF000000;
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY - 3 + 1, tooltipX - 3 + 1, tooltipY + tooltipHeight + 3 - 1, borderColorStart, borderColorEnd);
+            GuiUtils.drawGradientRect(zLevel, tooltipX + tooltipTextWidth + 2, tooltipY - 3 + 1, tooltipX + tooltipTextWidth + 3, tooltipY + tooltipHeight + 3 - 1, borderColorStart, borderColorEnd);
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY - 3, tooltipX + tooltipTextWidth + 3, tooltipY - 3 + 1, borderColorStart, borderColorStart);
+            GuiUtils.drawGradientRect(zLevel, tooltipX - 3, tooltipY + tooltipHeight + 2, tooltipX + tooltipTextWidth + 3, tooltipY + tooltipHeight + 3, borderColorEnd, borderColorEnd);
+
+            MinecraftForge.EVENT_BUS.post(new RenderTooltipEvent.PostBackground(stack, textLines, tooltipX, tooltipY, font, tooltipTextWidth, tooltipHeight));
+            int tooltipTop = tooltipY;
+
+            for (int lineNumber = 0; lineNumber < textLines.size(); ++lineNumber) {
+                String line = textLines.get(lineNumber);
+                font.drawStringWithShadow(line, (float) tooltipX, (float) tooltipY, -1);
+
+                if (lineNumber + 1 == titleLinesCount) {
+                    tooltipY += 2;
+                }
+
+                tooltipY += 10;
+            }
+
+            MinecraftForge.EVENT_BUS.post(new RenderTooltipEvent.PostText(stack, textLines, tooltipX, tooltipTop, font, tooltipTextWidth, tooltipHeight));
+
+            // RS BEGIN
+            if (RS.INSTANCE.config.detailedTooltip) {
+                GlStateManager.pushMatrix();
+                GlStateManager.scale(textScale, textScale, 1);
+
+                if (!(gridStack instanceof GridStackItem) || !((GridStackItem) gridStack).doesDisplayCraftText()) {
+                    font.drawStringWithShadow(
+                        TextFormatting.GRAY + I18n.format("misc.refinedstorage:total", gridStack.getFormattedFullQuantity()),
+                        RenderUtils.getOffsetOnScale(tooltipX, textScale),
+                        RenderUtils.getOffsetOnScale(tooltipTop + tooltipHeight - (gridStack.getTrackerEntry() != null ? 15 : 6) - (font.getUnicodeFlag() ? 2 : 0), textScale),
+                        -1
+                    );
+                }
+
+                if (gridStack.getTrackerEntry() != null) {
+                    font.drawStringWithShadow(
+                        TextFormatting.GRAY + TimeUtils.getAgo(gridStack.getTrackerEntry().getTime(), gridStack.getTrackerEntry().getName()),
+                        RenderUtils.getOffsetOnScale(tooltipX, textScale),
+                        RenderUtils.getOffsetOnScale(tooltipTop + tooltipHeight - 6 - (font.getUnicodeFlag() ? 2 : 0), textScale),
+                        -1
+                    );
+                }
+
+                GlStateManager.popMatrix();
+            }
+            // RS END
+
+            GlStateManager.enableLighting();
+            GlStateManager.enableDepth();
+            RenderHelper.enableStandardItemLighting();
+            GlStateManager.enableRescaleNormal();
+        }
+    }
+
     @Override
     protected void actionPerformed(GuiButton button) throws IOException {
         super.actionPerformed(button);
 
         if (button == oredictPattern) {
             TileDataManager.setParameter(TileGrid.OREDICT_PATTERN, oredictPattern.isChecked());
+        } else if (button == blockingPattern) {
+            TileDataManager.setParameter(TileGrid.BLOCKING_PATTERN, blockingPattern.isChecked());
+        } else if (button == processingPattern) {
+            // Rebuild the inventory slots before the slot change packet arrives
+            TileGrid.PROCESSING_PATTERN.setValue(processingPattern.isChecked());
+            ((ContainerGrid) this.inventorySlots).initSlots();
+
+            TileDataManager.setParameter(TileGrid.PROCESSING_PATTERN, processingPattern.isChecked());
+        } else if (button == tabPageLeft) {
+            grid.onTabPageChanged(grid.getTabPage() - 1);
+        } else if (button == tabPageRight) {
+            grid.onTabPageChanged(grid.getTabPage() + 1);
         }
     }
 
@@ -511,23 +678,25 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     public void mouseClicked(int mouseX, int mouseY, int clickedButton) throws IOException {
         super.mouseClicked(mouseX, mouseY, clickedButton);
 
-        boolean wasSearchFieldFocused = searchField.isFocused();
-
-        searchField.mouseClicked(mouseX, mouseY, clickedButton);
-
         if (tabHovering >= 0 && tabHovering < grid.getTabs().size()) {
             grid.onTabSelectionChanged(tabHovering);
         }
 
-        if (clickedButton == 1 && inBounds(79, 5 + getTabDelta(), 90, 12, mouseX - guiLeft, mouseY - guiTop)) {
-            searchField.setText("");
-            searchField.setFocused(true);
+        if (searchField != null) {
+            boolean wasSearchFieldFocused = searchField.isFocused();
 
-            sortItems();
+            searchField.mouseClicked(mouseX, mouseY, clickedButton);
 
-            updateJEI();
-        } else if (wasSearchFieldFocused != searchField.isFocused()) {
-            saveHistory();
+            if (clickedButton == 1 && inBounds(79, 5 + getTabHeight(), 90, 12, mouseX - guiLeft, mouseY - guiTop)) {
+                searchField.setText("");
+                searchField.setFocused(true);
+
+                scheduleSort();
+
+                updateJEI();
+            } else if (wasSearchFieldFocused != searchField.isFocused()) {
+                saveHistory();
+            }
         }
 
         boolean clickedClear = clickedButton == 0 && isOverClear(mouseX - guiLeft, mouseY - guiTop);
@@ -539,7 +708,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             RS.INSTANCE.network.sendToServer(new MessageGridPatternCreate(gridPos.getX(), gridPos.getY(), gridPos.getZ()));
         } else if (grid.isActive()) {
             if (clickedClear) {
-                RS.INSTANCE.network.sendToServer(new MessageGridCraftingClear());
+                RS.INSTANCE.network.sendToServer(new MessageGridClear());
             }
 
             ItemStack held = ((ContainerGrid) this.inventorySlots).getPlayer().inventory.getItemStack();
@@ -588,12 +757,16 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             konami.pop();
         }
 
+        if (searchField == null) {
+            return;
+        }
+
         if (checkHotbarKeys(keyCode)) {
             // NO OP
         } else if (searchField.textboxKeyTyped(character, keyCode)) {
             updateJEI();
+            scheduleSort();
 
-            sortItems();
             keyHandled = true;
         } else if (searchField.isFocused() && (keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN || keyCode == Keyboard.KEY_RETURN)) {
             if (keyCode == Keyboard.KEY_UP) {
@@ -603,22 +776,28 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             } else {
                 saveHistory();
 
-                if (grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_NORMAL || grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED) {
+                if (grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_NORMAL || grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED) {
                     searchField.setFocused(false);
                 }
             }
             keyHandled = true;
-        } else if (keyCode == RSKeyBindings.FOCUS_SEARCH_BAR.getKeyCode() && (grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_NORMAL || grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED)) {
+        } else if (keyCode == RSKeyBindings.FOCUS_SEARCH_BAR.getKeyCode() && (grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_NORMAL || grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED)) {
             searchField.setFocused(!searchField.isFocused());
 
             saveHistory();
             keyHandled = true;
+        } else if (keyCode == RSKeyBindings.CLEAR_GRID_CRAFTING_MATRIX.getKeyCode()) {
+            RS.INSTANCE.network.sendToServer(new MessageGridClear());
         } else {
             super.keyTyped(character, keyCode);
         }
     }
 
     private void updateSearchHistory(int delta) {
+        if (SEARCH_HISTORY.isEmpty()) {
+            return;
+        }
+
         if (searchHistory == -1) {
             searchHistory = SEARCH_HISTORY.size();
         }
@@ -633,7 +812,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
             if (delta == 1) {
                 searchField.setText("");
 
-                sortItems();
+                scheduleSort();
 
                 updateJEI();
 
@@ -643,7 +822,7 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
 
         searchField.setText(SEARCH_HISTORY.get(searchHistory));
 
-        sortItems();
+        scheduleSort();
 
         updateJEI();
     }
@@ -659,15 +838,15 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
     }
 
     private void updateJEI() {
-        if (IntegrationJEI.isLoaded() && (grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED || grid.getSearchBoxMode() == NetworkNodeGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED_AUTOSELECTED)) {
+        if (IntegrationJEI.isLoaded() && (grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED || grid.getSearchBoxMode() == IGrid.SEARCH_BOX_MODE_JEI_SYNCHRONIZED_AUTOSELECTED)) {
             RSJEIPlugin.INSTANCE.getRuntime().getIngredientFilter().setFilterText(searchField.getText());
         }
     }
 
     public void updateSearchFieldFocus(int mode) {
         if (searchField != null) {
-            searchField.setCanLoseFocus(!NetworkNodeGrid.isSearchBoxModeWithAutoselection(mode));
-            searchField.setFocused(NetworkNodeGrid.isSearchBoxModeWithAutoselection(mode));
+            searchField.setCanLoseFocus(!IGrid.isSearchBoxModeWithAutoselection(mode));
+            searchField.setFocused(IGrid.isSearchBoxModeWithAutoselection(mode));
         }
     }
 
@@ -679,5 +858,19 @@ public class GuiGrid extends GuiBase implements IGridDisplay {
         if (oredictPattern != null) {
             oredictPattern.setIsChecked(checked);
         }
+    }
+
+    public void updateBlockingPattern(boolean checked) {
+        if (blockingPattern != null) {
+            blockingPattern.setIsChecked(checked);
+        }
+    }
+
+    public GuiButton getTabPageLeft() {
+        return tabPageLeft;
+    }
+
+    public GuiButton getTabPageRight() {
+        return tabPageRight;
     }
 }

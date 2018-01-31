@@ -1,20 +1,18 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node.diskmanipulator;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDisk;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.diskdrive.NetworkNodeDiskDrive;
-import com.raoulvdberge.refinedstorage.inventory.ItemHandlerBase;
-import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFluid;
-import com.raoulvdberge.refinedstorage.inventory.ItemHandlerListenerNetworkNode;
-import com.raoulvdberge.refinedstorage.inventory.ItemHandlerUpgrade;
+import com.raoulvdberge.refinedstorage.inventory.*;
 import com.raoulvdberge.refinedstorage.item.ItemUpgrade;
 import com.raoulvdberge.refinedstorage.tile.TileDiskManipulator;
 import com.raoulvdberge.refinedstorage.tile.config.IComparable;
 import com.raoulvdberge.refinedstorage.tile.config.IFilterable;
 import com.raoulvdberge.refinedstorage.tile.config.IType;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -56,7 +54,7 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
             super.onContentsChanged(slot);
 
             if (FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER) {
-                RSUtils.createStorages(
+                StackUtils.createStorages(
                     getStackInSlot(slot),
                     slot,
                     itemStorages,
@@ -65,7 +63,7 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
                     s -> new StorageFluidDiskManipulator(NetworkNodeDiskManipulator.this, s)
                 );
 
-                RSUtils.updateBlock(world, pos);
+                WorldUtils.updateBlock(world, pos);
             }
         }
 
@@ -90,7 +88,7 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
             super.onContentsChanged(slot);
 
             if (FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER) {
-                RSUtils.createStorages(
+                StackUtils.createStorages(
                     getStackInSlot(slot),
                     3 + slot,
                     itemStorages,
@@ -99,10 +97,12 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
                     s -> new StorageFluidDiskManipulator(NetworkNodeDiskManipulator.this, s)
                 );
 
-                RSUtils.updateBlock(world, pos);
+                WorldUtils.updateBlock(world, pos);
             }
         }
     };
+
+    private ItemHandlerProxy disks = new ItemHandlerProxy(inputDisks, outputDisks);
 
     public NetworkNodeDiskManipulator(World world, BlockPos pos) {
         super(world, pos);
@@ -398,6 +398,10 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
         return outputDisks;
     }
 
+    public ItemHandlerProxy getDisks() {
+        return disks;
+    }
+
     public ItemHandlerBase getItemFilters() {
         return itemFilters;
     }
@@ -422,9 +426,9 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
     public void read(NBTTagCompound tag) {
         super.read(tag);
 
-        RSUtils.readItems(upgrades, 3, tag);
-        RSUtils.readItems(inputDisks, 4, tag);
-        RSUtils.readItems(outputDisks, 5, tag);
+        StackUtils.readItems(upgrades, 3, tag);
+        StackUtils.readItems(inputDisks, 4, tag);
+        StackUtils.readItems(outputDisks, 5, tag);
     }
 
     @Override
@@ -438,9 +442,9 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
 
         onBreak();
 
-        RSUtils.writeItems(upgrades, 3, tag);
-        RSUtils.writeItems(inputDisks, 4, tag);
-        RSUtils.writeItems(outputDisks, 5, tag);
+        StackUtils.writeItems(upgrades, 3, tag);
+        StackUtils.writeItems(inputDisks, 4, tag);
+        StackUtils.writeItems(outputDisks, 5, tag);
 
         return tag;
     }
@@ -449,8 +453,8 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
     public NBTTagCompound writeConfiguration(NBTTagCompound tag) {
         super.writeConfiguration(tag);
 
-        RSUtils.writeItems(itemFilters, 1, tag);
-        RSUtils.writeItems(fluidFilters, 2, tag);
+        StackUtils.writeItems(itemFilters, 1, tag);
+        StackUtils.writeItems(fluidFilters, 2, tag);
 
         tag.setInteger(NBT_COMPARE, compare);
         tag.setInteger(NBT_MODE, mode);
@@ -464,8 +468,8 @@ public class NetworkNodeDiskManipulator extends NetworkNode implements IComparab
     public void readConfiguration(NBTTagCompound tag) {
         super.readConfiguration(tag);
 
-        RSUtils.readItems(itemFilters, 1, tag);
-        RSUtils.readItems(fluidFilters, 2, tag);
+        StackUtils.readItems(itemFilters, 1, tag);
+        StackUtils.readItems(fluidFilters, 2, tag);
 
         if (tag.hasKey(NBT_COMPARE)) {
             compare = tag.getInteger(NBT_COMPARE);

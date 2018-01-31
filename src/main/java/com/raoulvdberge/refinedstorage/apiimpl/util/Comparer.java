@@ -1,8 +1,8 @@
 package com.raoulvdberge.refinedstorage.apiimpl.util;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.block.BlockNode;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumActionResult;
 import net.minecraftforge.fluids.FluidStack;
@@ -42,6 +42,7 @@ public class Comparer implements IComparer {
                 left = stripTags(left.copy());
                 right = stripTags(right.copy());
             }
+
             if (!isEqualNBT(left, right)) {
                 return false;
             }
@@ -98,6 +99,8 @@ public class Comparer implements IComparer {
                 return true;
             } else if (!left.hasTagCompound() && right.hasTagCompound() && right.getTagCompound().hasNoTags()) {
                 return true;
+            } else if (!left.hasTagCompound() && !right.hasTagCompound()) {
+                return true;
             }
 
             return false;
@@ -114,7 +117,7 @@ public class Comparer implements IComparer {
             return validity == EnumActionResult.SUCCESS;
         }
 
-        return RSUtils.areStacksEquivalent(left, right);
+        return StackUtils.areStacksEquivalent(left, right);
     }
 
     private EnumActionResult validityCheck(@Nullable ItemStack left, @Nullable ItemStack right) {
@@ -140,7 +143,8 @@ public class Comparer implements IComparer {
         return EnumActionResult.PASS;
     }
 
-    public static ItemStack stripTags(ItemStack stack) {
+    @Nullable
+    public static ItemStack stripTags(@Nullable ItemStack stack) {
         if (stack != null && stack.hasTagCompound()) {
             switch (stack.getItem().getRegistryName().getResourceDomain()) {
                 case "mekanism":
@@ -179,8 +183,9 @@ public class Comparer implements IComparer {
                     stack.getTagCompound().removeTag("hammerDmg");
                     stack.getTagCompound().removeTag("cutterDmg");
                     break;
-                case "storagedrawers":
-                    stack.getTagCompound().removeTag("material");
+                case "modularrouters":
+                    stack.getTagCompound().removeTag("ModuleFilter");
+                    stack.getTagCompound().removeTag("Flags");
                     break;
                 case "fluxnetworks":
                     stack.getTagCompound().removeTag("dropped");

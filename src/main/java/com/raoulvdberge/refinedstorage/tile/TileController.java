@@ -3,12 +3,13 @@ package com.raoulvdberge.refinedstorage.tile;
 import com.google.common.base.Preconditions;
 import com.raoulvdberge.refinedstorage.RS;
 import com.raoulvdberge.refinedstorage.RSBlocks;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingManager;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.network.INetworkNodeGraph;
-import com.raoulvdberge.refinedstorage.api.network.grid.IFluidGridHandler;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IFluidGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.api.network.item.INetworkItemHandler;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeProxy;
@@ -19,32 +20,35 @@ import com.raoulvdberge.refinedstorage.api.network.security.Permission;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.api.storage.IStorage;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageCache;
+import com.raoulvdberge.refinedstorage.api.storage.IStorageTracker;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.CraftingManager;
 import com.raoulvdberge.refinedstorage.apiimpl.network.NetworkNodeGraph;
-import com.raoulvdberge.refinedstorage.apiimpl.network.grid.FluidGridHandler;
-import com.raoulvdberge.refinedstorage.apiimpl.network.grid.ItemGridHandler;
+import com.raoulvdberge.refinedstorage.apiimpl.network.grid.handler.FluidGridHandler;
+import com.raoulvdberge.refinedstorage.apiimpl.network.grid.handler.ItemGridHandler;
 import com.raoulvdberge.refinedstorage.apiimpl.network.item.NetworkItemHandler;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.externalstorage.StorageFluidExternal;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.externalstorage.StorageItemExternal;
 import com.raoulvdberge.refinedstorage.apiimpl.network.security.SecurityManager;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheFluid;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheItem;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageTrackerFluid;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageTrackerItem;
 import com.raoulvdberge.refinedstorage.block.BlockController;
+import com.raoulvdberge.refinedstorage.block.ControllerEnergyType;
 import com.raoulvdberge.refinedstorage.block.ControllerType;
-import com.raoulvdberge.refinedstorage.block.GridType;
+import com.raoulvdberge.refinedstorage.capability.CapabilityNetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.container.ContainerCraftingMonitor;
 import com.raoulvdberge.refinedstorage.container.ContainerGrid;
 import com.raoulvdberge.refinedstorage.container.ContainerReaderWriter;
 import com.raoulvdberge.refinedstorage.integration.forgeenergy.EnergyForge;
 import com.raoulvdberge.refinedstorage.network.*;
-import com.raoulvdberge.refinedstorage.proxy.CapabilityNetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.tile.config.IRedstoneConfigurable;
 import com.raoulvdberge.refinedstorage.tile.config.RedstoneMode;
-import com.raoulvdberge.refinedstorage.tile.data.ITileDataProducer;
 import com.raoulvdberge.refinedstorage.tile.data.RSSerializers;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
-import com.raoulvdberge.refinedstorage.tile.grid.IGrid;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -62,6 +66,7 @@ import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.energy.CapabilityEnergy;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.items.ItemHandlerHelper;
+import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -69,66 +74,6 @@ import java.util.*;
 import java.util.function.Predicate;
 
 public class TileController extends TileBase implements ITickable, INetwork, IRedstoneConfigurable, INetworkNode, INetworkNodeProxy<TileController> {
-    public static final TileDataParameter<Integer> REDSTONE_MODE = RedstoneMode.createParameter();
-
-    public static final TileDataParameter<Integer> ENERGY_USAGE = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TileController>() {
-        @Override
-        public Integer getValue(TileController tile) {
-            return tile.getEnergyUsage();
-        }
-    });
-
-    public static final TileDataParameter<Integer> ENERGY_STORED = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TileController>() {
-        @Override
-        public Integer getValue(TileController tile) {
-            return tile.energy.getEnergyStored();
-        }
-    });
-
-    public static final TileDataParameter<Integer> ENERGY_CAPACITY = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TileController>() {
-        @Override
-        public Integer getValue(TileController tile) {
-            return tile.energy.getMaxEnergyStored();
-        }
-    });
-
-    public static final TileDataParameter<List<ClientNode>> NODES = new TileDataParameter<>(RSSerializers.CLIENT_NODE_SERIALIZER, new ArrayList<>(), new ITileDataProducer<List<ClientNode>, TileController>() {
-        @Override
-        public List<ClientNode> getValue(TileController tile) {
-            List<ClientNode> nodes = new ArrayList<>();
-
-            for (INetworkNode node : tile.nodeGraph.all()) {
-                if (node.canUpdate()) {
-                    ItemStack stack = node.getItemStack();
-
-                    if (stack.isEmpty()) {
-                        continue;
-                    }
-
-                    ClientNode clientNode = new ClientNode(stack, 1, node.getEnergyUsage());
-
-                    if (nodes.contains(clientNode)) {
-                        ClientNode other = nodes.get(nodes.indexOf(clientNode));
-
-                        other.setAmount(other.getAmount() + 1);
-                    } else {
-                        nodes.add(clientNode);
-                    }
-                }
-            }
-
-            nodes.sort(CLIENT_NODE_COMPARATOR);
-
-            return nodes;
-        }
-    });
-
-    public static final String NBT_ENERGY = "Energy";
-    public static final String NBT_ENERGY_CAPACITY = "EnergyCapacity";
-
-    private static final String NBT_READER_WRITER_CHANNELS = "ReaderWriterChannels";
-    private static final String NBT_READER_WRITER_NAME = "Name";
-
     private static final Comparator<ClientNode> CLIENT_NODE_COMPARATOR = (left, right) -> {
         if (left.getEnergyUsage() == right.getEnergyUsage()) {
             return 0;
@@ -136,6 +81,51 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
 
         return (left.getEnergyUsage() > right.getEnergyUsage()) ? -1 : 1;
     };
+
+    public static final TileDataParameter<Integer, TileController> REDSTONE_MODE = RedstoneMode.createParameter();
+    public static final TileDataParameter<Integer, TileController> ENERGY_USAGE = new TileDataParameter<>(DataSerializers.VARINT, 0, TileController::getEnergyUsage);
+    public static final TileDataParameter<Integer, TileController> ENERGY_STORED = new TileDataParameter<>(DataSerializers.VARINT, 0, t -> t.getEnergy().getEnergyStored());
+    public static final TileDataParameter<Integer, TileController> ENERGY_CAPACITY = new TileDataParameter<>(DataSerializers.VARINT, 0, t -> t.getEnergy().getMaxEnergyStored());
+    public static final TileDataParameter<List<ClientNode>, TileController> NODES = new TileDataParameter<>(RSSerializers.CLIENT_NODE_SERIALIZER, new ArrayList<>(), t -> {
+        List<ClientNode> nodes = new ArrayList<>();
+
+        for (INetworkNode node : t.nodeGraph.all()) {
+            if (node.canUpdate()) {
+                ItemStack stack = node.getItemStack();
+
+                if (stack.isEmpty()) {
+                    continue;
+                }
+
+                ClientNode clientNode = new ClientNode(stack, 1, node.getEnergyUsage());
+
+                if (nodes.contains(clientNode)) {
+                    ClientNode other = nodes.get(nodes.indexOf(clientNode));
+
+                    other.setAmount(other.getAmount() + 1);
+                } else {
+                    nodes.add(clientNode);
+                }
+            }
+        }
+
+        nodes.sort(CLIENT_NODE_COMPARATOR);
+
+        return nodes;
+    });
+
+    private static final int THROTTLE_INACTIVE_TO_ACTIVE = 20;
+    private static final int THROTTLE_ACTIVE_TO_INACTIVE = 4;
+
+    public static final String NBT_ENERGY = "Energy";
+    public static final String NBT_ENERGY_CAPACITY = "EnergyCapacity";
+    public static final String NBT_ENERGY_TYPE = "EnergyType";
+
+    private static final String NBT_READER_WRITER_CHANNELS = "ReaderWriterChannels";
+    private static final String NBT_READER_WRITER_NAME = "Name";
+
+    private static final String NBT_ITEM_STORAGE_TRACKER = "ItemStorageTracker";
+    private static final String NBT_FLUID_STORAGE_TRACKER = "FluidStorageTracker";
 
     private IItemGridHandler itemGridHandler = new ItemGridHandler(this);
     private IFluidGridHandler fluidGridHandler = new FluidGridHandler(this);
@@ -149,19 +139,24 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     private ISecurityManager securityManager = new SecurityManager(this);
 
     private IStorageCache<ItemStack> itemStorage = new StorageCacheItem(this);
+    private StorageTrackerItem itemStorageTracker = new StorageTrackerItem(this::markDirty);
+    private List<Pair<ItemStack, Integer>> batchedItemStorageDeltas = new LinkedList<>();
+
     private IStorageCache<FluidStack> fluidStorage = new StorageCacheFluid(this);
+    private StorageTrackerFluid fluidStorageTracker = new StorageTrackerFluid(this::markDirty);
 
     private Map<String, IReaderWriterChannel> readerWriterChannels = new HashMap<>();
 
     private EnergyForge energy = new EnergyForge(RS.INSTANCE.config.controllerCapacity);
 
-    private int lastEnergyDisplay;
-
+    private boolean throttlingDisabled = true; // Will be enabled after first update
     private boolean couldRun;
+    private int ticksSinceUpdateChanged;
 
     private boolean craftingMonitorUpdateRequested;
 
     private ControllerType type;
+    private ControllerEnergyType energyType = ControllerEnergyType.OFF;
 
     private RedstoneMode redstoneMode = RedstoneMode.IGNORE;
 
@@ -225,8 +220,6 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
                 }
             }
 
-            networkItemHandler.update();
-
             if (getType() == ControllerType.NORMAL) {
                 if (!RS.INSTANCE.config.controllerUsesEnergy) {
                     energy.setEnergyStored(energy.getMaxEnergyStored());
@@ -239,17 +232,29 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
                 energy.setEnergyStored(energy.getMaxEnergyStored());
             }
 
-            if (couldRun != canRun()) {
-                couldRun = canRun();
+            boolean canRun = canRun();
 
-                nodeGraph.rebuild();
-                securityManager.rebuild();
+            if (couldRun != canRun) {
+                ++ticksSinceUpdateChanged;
+
+                if ((canRun ? (ticksSinceUpdateChanged > THROTTLE_INACTIVE_TO_ACTIVE) : (ticksSinceUpdateChanged > THROTTLE_ACTIVE_TO_INACTIVE)) || throttlingDisabled) {
+                    ticksSinceUpdateChanged = 0;
+                    couldRun = canRun;
+                    throttlingDisabled = false;
+
+                    nodeGraph.rebuild();
+                    securityManager.rebuild();
+                }
+            } else {
+                ticksSinceUpdateChanged = 0;
             }
 
-            if (getEnergyScaledForDisplay() != lastEnergyDisplay) {
-                lastEnergyDisplay = getEnergyScaledForDisplay();
+            ControllerEnergyType energyType = getEnergyType();
 
-                RSUtils.updateBlock(world, pos);
+            if (this.energyType != energyType) {
+                this.energyType = energyType;
+
+                WorldUtils.updateBlock(world, pos);
             }
         }
     }
@@ -306,10 +311,25 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     }
 
     @Override
-    public void sendItemStorageDeltaToClient(ItemStack stack, int delta) {
-        world.getMinecraftServer().getPlayerList().getPlayers().stream()
-            .filter(player -> isWatchingGrid(player, GridType.NORMAL, GridType.CRAFTING, GridType.PATTERN))
-            .forEach(player -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(this, stack, delta), player));
+    public void sendBatchedItemStorageDeltaToClient() {
+        if (!batchedItemStorageDeltas.isEmpty()) {
+            world.getMinecraftServer().getPlayerList().getPlayers().stream()
+                .filter(player -> isWatchingGrid(player, GridType.NORMAL, GridType.CRAFTING, GridType.PATTERN))
+                .forEach(player -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(this, itemStorageTracker, batchedItemStorageDeltas), player));
+
+            batchedItemStorageDeltas.clear();
+        }
+    }
+
+    @Override
+    public void sendItemStorageDeltaToClient(ItemStack stack, int delta, boolean batched) {
+        if (!batched) {
+            world.getMinecraftServer().getPlayerList().getPlayers().stream()
+                .filter(player -> isWatchingGrid(player, GridType.NORMAL, GridType.CRAFTING, GridType.PATTERN))
+                .forEach(player -> RS.INSTANCE.network.sendTo(new MessageGridItemDelta(this, itemStorageTracker, stack, delta), player));
+        } else {
+            batchedItemStorageDeltas.add(Pair.of(stack, delta));
+        }
     }
 
     @Override
@@ -328,7 +348,7 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     public void sendFluidStorageDeltaToClient(FluidStack stack, int delta) {
         world.getMinecraftServer().getPlayerList().getPlayers().stream()
             .filter(player -> isWatchingGrid(player, GridType.FLUID))
-            .forEach(player -> RS.INSTANCE.network.sendTo(new MessageGridFluidDelta(stack, delta), player));
+            .forEach(player -> RS.INSTANCE.network.sendTo(new MessageGridFluidDelta(this, stack, delta), player));
     }
 
     private boolean isWatchingGrid(EntityPlayer player, GridType... types) {
@@ -447,14 +467,14 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
         }
 
         if (!simulate && inserted - insertedExternally > 0) {
-            itemStorage.add(stack, inserted - insertedExternally, false);
+            itemStorage.add(stack, inserted - insertedExternally, false, false);
         }
 
         return remainder;
     }
 
     @Override
-    public ItemStack extractItem(@Nonnull ItemStack stack, int size, int flags, boolean simulate, Predicate<IStorage> filter) {
+    public ItemStack extractItem(@Nonnull ItemStack stack, int size, int flags, boolean simulate, Predicate<IStorage<ItemStack>> filter) {
         int requested = size;
         int received = 0;
 
@@ -492,7 +512,7 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
         }
 
         if (newStack != null && newStack.getCount() - extractedExternally > 0 && !simulate) {
-            itemStorage.remove(newStack, newStack.getCount() - extractedExternally);
+            itemStorage.remove(newStack, newStack.getCount() - extractedExternally, false);
         }
 
         return newStack;
@@ -502,7 +522,7 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     @Override
     public FluidStack insertFluid(@Nonnull FluidStack stack, int size, boolean simulate) {
         if (fluidStorage.getStorages().isEmpty()) {
-            return RSUtils.copyStackWithSize(stack, size);
+            return StackUtils.copy(stack, size);
         }
 
         FluidStack remainder = stack;
@@ -534,7 +554,7 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
         }
 
         if (inserted > 0) {
-            fluidStorage.add(stack, inserted, false);
+            fluidStorage.add(stack, inserted, false, false);
         }
 
         return remainder;
@@ -575,10 +595,20 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
         }
 
         if (newStack != null && !simulate) {
-            fluidStorage.remove(newStack, newStack.amount);
+            fluidStorage.remove(newStack, newStack.amount, false);
         }
 
         return newStack;
+    }
+
+    @Override
+    public IStorageTracker<ItemStack> getItemStorageTracker() {
+        return itemStorageTracker;
+    }
+
+    @Override
+    public IStorageTracker<FluidStack> getFluidStorageTracker() {
+        return fluidStorageTracker;
     }
 
     @Override
@@ -587,8 +617,8 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     }
 
     @Override
-    public void readFromNBT(NBTTagCompound tag) {
-        super.readFromNBT(tag);
+    public void read(NBTTagCompound tag) {
+        super.read(tag);
 
         if (tag.hasKey(NBT_ENERGY)) {
             energy.setEnergyStored(tag.getInteger(NBT_ENERGY));
@@ -613,11 +643,19 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
                 readerWriterChannels.put(name, channel);
             }
         }
+
+        if (tag.hasKey(NBT_ITEM_STORAGE_TRACKER)) {
+            itemStorageTracker.readFromNBT(tag.getTagList(NBT_ITEM_STORAGE_TRACKER, Constants.NBT.TAG_COMPOUND));
+        }
+
+        if (tag.hasKey(NBT_FLUID_STORAGE_TRACKER)) {
+            fluidStorageTracker.readFromNBT(tag.getTagList(NBT_FLUID_STORAGE_TRACKER, Constants.NBT.TAG_COMPOUND));
+        }
     }
 
     @Override
-    public NBTTagCompound writeToNBT(NBTTagCompound tag) {
-        super.writeToNBT(tag);
+    public NBTTagCompound write(NBTTagCompound tag) {
+        super.write(tag);
 
         tag.setInteger(NBT_ENERGY, energy.getEnergyStored());
 
@@ -637,6 +675,9 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
 
         tag.setTag(NBT_READER_WRITER_CHANNELS, readerWriterChannelsList);
 
+        tag.setTag(NBT_ITEM_STORAGE_TRACKER, itemStorageTracker.serializeNBT());
+        tag.setTag(NBT_FLUID_STORAGE_TRACKER, fluidStorageTracker.serializeNBT());
+
         return tag;
     }
 
@@ -644,16 +685,16 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
     public NBTTagCompound writeUpdate(NBTTagCompound tag) {
         super.writeUpdate(tag);
 
-        tag.setInteger(NBT_ENERGY_CAPACITY, energy.getMaxEnergyStored());
-        tag.setInteger(NBT_ENERGY, energy.getEnergyStored());
+        tag.setInteger(NBT_ENERGY_TYPE, getEnergyType().getId());
 
         return tag;
     }
 
     @Override
     public void readUpdate(NBTTagCompound tag) {
-        energy.setMaxEnergyStored(tag.getInteger(NBT_ENERGY_CAPACITY));
-        energy.setEnergyStored(tag.getInteger(NBT_ENERGY));
+        if (tag.hasKey(NBT_ENERGY_TYPE)) {
+            this.energyType = ControllerEnergyType.getById(tag.getInteger(NBT_ENERGY_TYPE));
+        }
 
         super.readUpdate(tag);
     }
@@ -662,8 +703,26 @@ public class TileController extends TileBase implements ITickable, INetwork, IRe
         return (int) ((float) stored / (float) capacity * (float) scale);
     }
 
-    public int getEnergyScaledForDisplay() {
-        return getEnergyScaled(energy.getEnergyStored(), energy.getMaxEnergyStored(), 7);
+    public static ControllerEnergyType getEnergyType(int stored, int capacity) {
+        int energy = getEnergyScaled(stored, capacity, 100);
+
+        if (energy <= 0) {
+            return ControllerEnergyType.OFF;
+        } else if (energy <= 10) {
+            return ControllerEnergyType.NEARLY_OFF;
+        } else if (energy <= 20) {
+            return ControllerEnergyType.NEARLY_ON;
+        }
+
+        return ControllerEnergyType.ON;
+    }
+
+    public ControllerEnergyType getEnergyType() {
+        if (world.isRemote) {
+            return energyType;
+        }
+
+        return getEnergyType(energy.getEnergyStored(), energy.getMaxEnergyStored());
     }
 
     @Override

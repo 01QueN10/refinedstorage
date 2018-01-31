@@ -1,11 +1,12 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node.externalstorage;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.tile.TileInterface;
 import com.raoulvdberge.refinedstorage.tile.config.IFilterable;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 
@@ -24,7 +25,14 @@ public class StorageItemItemHandler extends StorageItemExternal {
     public StorageItemItemHandler(NetworkNodeExternalStorage externalStorage, Supplier<IItemHandler> handlerSupplier) {
         this.externalStorage = externalStorage;
         this.handlerSupplier = handlerSupplier;
-        this.connectedToInterface = externalStorage.getFacingTile() instanceof TileInterface;
+
+        TileEntity tile = externalStorage.getFacingTile();
+
+        if (tile instanceof TileInterface) {
+            // Make sure we override our handler supplier so we don't get network items as well (which leads to unstable behavior)
+            this.handlerSupplier = ((TileInterface) tile).getNode()::getItems;
+            this.connectedToInterface = true;
+        }
     }
 
     public boolean isConnectedToInterface() {
@@ -35,7 +43,17 @@ public class StorageItemItemHandler extends StorageItemExternal {
     public int getCapacity() {
         IItemHandler handler = handlerSupplier.get();
 
-        return handler != null ? handler.getSlots() * 64 : 0;
+        if (handler == null) {
+            return 0;
+        }
+
+        int capacity = 0;
+
+        for (int i = 0; i < handler.getSlots(); ++i) {
+            capacity += Math.min(handler.getSlotLimit(i), handler.getStackInSlot(i).getMaxStackSize());
+        }
+
+        return capacity;
     }
 
     @Override
@@ -60,7 +78,7 @@ public class StorageItemItemHandler extends StorageItemExternal {
         IItemHandler handler = handlerSupplier.get();
 
         if (handler != null && IFilterable.canTake(externalStorage.getItemFilters(), externalStorage.getMode(), externalStorage.getCompare(), stack)) {
-            return RSUtils.transformEmptyToNull(ItemHandlerHelper.insertItem(handler, ItemHandlerHelper.copyStackWithSize(stack, size), simulate));
+            return StackUtils.emptyToNull(ItemHandlerHelper.insertItem(handler, ItemHandlerHelper.copyStackWithSize(stack, size), simulate));
         }
 
         return ItemHandlerHelper.copyStackWithSize(stack, size);
@@ -86,7 +104,7 @@ public class StorageItemItemHandler extends StorageItemExternal {
 
                 if (!got.isEmpty()) {
                     if (received == null) {
-                        received = got;
+                        received = got.copy();
                     } else {
                         received.grow(got.getCount());
                     }
@@ -114,9 +132,7 @@ public class StorageItemItemHandler extends StorageItemExternal {
         int size = 0;
 
         for (int i = 0; i < handler.getSlots(); ++i) {
-            if (!handler.getStackInSlot(i).isEmpty()) {
-                size += handler.getStackInSlot(i).getCount();
-            }
+            size += handler.getStackInSlot(i).getCount();
         }
 
         return size;

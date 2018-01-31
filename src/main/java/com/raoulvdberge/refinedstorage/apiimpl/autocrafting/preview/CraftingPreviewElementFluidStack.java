@@ -3,6 +3,7 @@ package com.raoulvdberge.refinedstorage.apiimpl.autocrafting.preview;
 import com.raoulvdberge.refinedstorage.api.autocrafting.preview.ICraftingPreviewElement;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawers;
 import com.raoulvdberge.refinedstorage.gui.GuiBase;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.nbt.NBTTagCompound;
@@ -19,8 +20,8 @@ public class CraftingPreviewElementFluidStack implements ICraftingPreviewElement
     private FluidStack stack;
     private int available;
     private boolean missing;
+    // If missing is true then toCraft is the missing amount
     private int toCraft;
-    // if missing is true then toCraft is the missing amount
 
     public CraftingPreviewElementFluidStack(FluidStack stack) {
         this.stack = stack.copy();
@@ -64,17 +65,19 @@ public class CraftingPreviewElementFluidStack implements ICraftingPreviewElement
         if (missing) {
             drawers.getOverlayDrawer().draw(x, y, 0xFFF2DEDE);
         }
+
         x += 5;
         y += 7;
+
         drawers.getFluidDrawer().draw(x, y, getElement());
 
-        float scale = 0.5f;
+        float scale = drawers.getFontRenderer().getUnicodeFlag() ? 1F : 0.5F;
 
         GlStateManager.pushMatrix();
         GlStateManager.scale(scale, scale, 1);
 
-        drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + 23, scale), GuiBase.calculateOffsetOnScale(y + 3, scale), GuiBase.t("gui.refinedstorage:crafting_preview.available", ""));
-        drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + 23, scale), GuiBase.calculateOffsetOnScale(y + 9, scale), getAvailable() + " mB");
+        drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + 23, scale), RenderUtils.getOffsetOnScale(y + 3, scale), GuiBase.t("gui.refinedstorage:crafting_preview.available", ""));
+        drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + 23, scale), RenderUtils.getOffsetOnScale(y + 9, scale), getAvailable() + " mB");
 
         GlStateManager.popMatrix();
     }

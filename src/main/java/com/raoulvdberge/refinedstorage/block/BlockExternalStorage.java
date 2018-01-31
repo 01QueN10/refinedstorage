@@ -1,9 +1,9 @@
 package com.raoulvdberge.refinedstorage.block;
 
 import com.raoulvdberge.refinedstorage.RSGui;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.externalstorage.NetworkNodeExternalStorage;
 import com.raoulvdberge.refinedstorage.tile.TileExternalStorage;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
@@ -19,12 +19,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class BlockExternalStorage extends BlockCable {
-    private static final AxisAlignedBB HEAD_NORTH_AABB = RSUtils.getAABB(3, 3, 0, 13, 13, 2);
-    private static final AxisAlignedBB HEAD_EAST_AABB = RSUtils.getAABB(14, 3, 3, 16, 13, 13);
-    private static final AxisAlignedBB HEAD_SOUTH_AABB = RSUtils.getAABB(3, 3, 14, 13, 13, 16);
-    private static final AxisAlignedBB HEAD_WEST_AABB = RSUtils.getAABB(0, 3, 3, 2, 13, 13);
-    private static final AxisAlignedBB HEAD_UP_AABB = RSUtils.getAABB(3, 14, 3, 13, 16, 13);
-    private static final AxisAlignedBB HEAD_DOWN_AABB = RSUtils.getAABB(3, 0, 3, 13, 2, 13);
+    private static final AxisAlignedBB HEAD_NORTH_AABB = RenderUtils.getBounds(3, 3, 0, 13, 13, 2);
+    private static final AxisAlignedBB HEAD_EAST_AABB = RenderUtils.getBounds(14, 3, 3, 16, 13, 13);
+    private static final AxisAlignedBB HEAD_SOUTH_AABB = RenderUtils.getBounds(3, 3, 14, 13, 13, 16);
+    private static final AxisAlignedBB HEAD_WEST_AABB = RenderUtils.getBounds(0, 3, 3, 2, 13, 13);
+    private static final AxisAlignedBB HEAD_UP_AABB = RenderUtils.getBounds(3, 14, 3, 13, 16, 13);
+    private static final AxisAlignedBB HEAD_DOWN_AABB = RenderUtils.getBounds(3, 0, 3, 13, 2, 13);
 
     public BlockExternalStorage() {
         super("external_storage");
@@ -88,10 +88,14 @@ public class BlockExternalStorage extends BlockCable {
         super.neighborChanged(state, world, pos, block, fromPos);
 
         if (!world.isRemote) {
-            NetworkNodeExternalStorage externalStorage = ((TileExternalStorage) world.getTileEntity(pos)).getNode();
+            TileEntity tile = world.getTileEntity(pos);
 
-            if (externalStorage.getNetwork() != null) {
-                externalStorage.updateStorage(externalStorage.getNetwork());
+            if (tile instanceof TileExternalStorage) {
+                NetworkNodeExternalStorage externalStorage = ((TileExternalStorage) tile).getNode();
+
+                if (externalStorage.getNetwork() != null) {
+                    externalStorage.updateStorage(externalStorage.getNetwork());
+                }
             }
         }
     }

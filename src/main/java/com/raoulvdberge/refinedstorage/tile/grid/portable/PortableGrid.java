@@ -1,38 +1,40 @@
 package com.raoulvdberge.refinedstorage.tile.grid.portable;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGridTab;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDisk;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDiskProvider;
 import com.raoulvdberge.refinedstorage.api.storage.StorageDiskType;
-import com.raoulvdberge.refinedstorage.apiimpl.network.grid.ItemGridHandlerPortable;
+import com.raoulvdberge.refinedstorage.api.util.IFilter;
+import com.raoulvdberge.refinedstorage.apiimpl.network.grid.handler.ItemGridHandlerPortable;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.diskdrive.NetworkNodeDiskDrive;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheItemPortable;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageDiskItemPortable;
-import com.raoulvdberge.refinedstorage.block.GridType;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageTrackerItem;
 import com.raoulvdberge.refinedstorage.gui.grid.GuiGrid;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerBase;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFilter;
 import com.raoulvdberge.refinedstorage.item.ItemBlockPortableGrid;
 import com.raoulvdberge.refinedstorage.item.ItemEnergyItem;
 import com.raoulvdberge.refinedstorage.item.ItemWirelessGrid;
-import com.raoulvdberge.refinedstorage.item.filter.Filter;
-import com.raoulvdberge.refinedstorage.item.filter.FilterTab;
 import com.raoulvdberge.refinedstorage.network.MessageGridSettingsUpdate;
-import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
-import com.raoulvdberge.refinedstorage.tile.grid.IGrid;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.InventoryCraftResult;
 import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.energy.CapabilityEnergy;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.relauncher.Side;
+import net.minecraftforge.items.IItemHandlerModifiable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -41,7 +43,9 @@ import java.util.Collections;
 import java.util.List;
 
 public class PortableGrid implements IGrid, IPortableGrid {
-    public static final int GRID_TYPE = 2;
+    public static int ID;
+
+    public static final String NBT_STORAGE_TRACKER = "StorageTracker";
 
     @Nullable
     private IStorageDisk<ItemStack> storage;
@@ -55,10 +59,15 @@ public class PortableGrid implements IGrid, IPortableGrid {
     private int sortingDirection;
     private int searchBoxMode;
     private int tabSelected;
+    private int tabPage;
     private int size;
 
-    private List<Filter> filters = new ArrayList<>();
-    private List<FilterTab> tabs = new ArrayList<>();
+    private StorageTrackerItem storageTracker = new StorageTrackerItem(() -> {
+        stack.getTagCompound().setTag(NBT_STORAGE_TRACKER, getStorageTracker().serializeNBT());
+    });
+
+    private List<IFilter> filters = new ArrayList<>();
+    private List<IGridTab> tabs = new ArrayList<>();
     private ItemHandlerFilter filter = new ItemHandlerFilter(filters, tabs, null) {
         @Override
         protected void onContentsChanged(int slot) {
@@ -68,7 +77,7 @@ public class PortableGrid implements IGrid, IPortableGrid {
                 stack.setTagCompound(new NBTTagCompound());
             }
 
-            RSUtils.writeItems(this, 0, stack.getTagCompound());
+            StackUtils.writeItems(this, 0, stack.getTagCompound());
         }
     };
     private ItemHandlerBase disk = new ItemHandlerBase(1, s -> NetworkNodeDiskDrive.VALIDATOR_STORAGE_DISK.test(s) && ((IStorageDiskProvider) s.getItem()).create(s).getType() == StorageDiskType.ITEMS) {
@@ -94,7 +103,7 @@ public class PortableGrid implements IGrid, IPortableGrid {
                 if (player != null) {
                     cache.invalidate();
 
-                    RSUtils.writeItems(this, 4, stack.getTagCompound());
+                    StackUtils.writeItems(this, 4, stack.getTagCompound());
                 }
             }
         }
@@ -119,6 +128,7 @@ public class PortableGrid implements IGrid, IPortableGrid {
             this.sortingDirection = ItemWirelessGrid.getSortingDirection(stack);
             this.searchBoxMode = ItemWirelessGrid.getSearchBoxMode(stack);
             this.tabSelected = ItemWirelessGrid.getTabSelected(stack);
+            this.tabPage = ItemWirelessGrid.getTabPage(stack);
             this.size = ItemWirelessGrid.getSize(stack);
         }
 
@@ -126,11 +136,15 @@ public class PortableGrid implements IGrid, IPortableGrid {
             stack.setTagCompound(new NBTTagCompound());
         }
 
-        if (player != null) {
-            RSUtils.readItems(filter, 0, stack.getTagCompound());
+        if (stack.getTagCompound().hasKey(NBT_STORAGE_TRACKER)) {
+            storageTracker.readFromNBT(stack.getTagCompound().getTagList(NBT_STORAGE_TRACKER, Constants.NBT.TAG_COMPOUND));
         }
 
-        RSUtils.readItems(disk, 4, stack.getTagCompound());
+        if (player != null) {
+            StackUtils.readItems(filter, 0, stack.getTagCompound());
+        }
+
+        StackUtils.readItems(disk, 4, stack.getTagCompound());
 
         if (player != null) {
             drainEnergy(RS.INSTANCE.config.portableGridOpenUsage);
@@ -235,6 +249,16 @@ public class PortableGrid implements IGrid, IPortableGrid {
     }
 
     @Override
+    public int getTabPage() {
+        return Math.min(tabPage, getTotalTabPages());
+    }
+
+    @Override
+    public int getTotalTabPages() {
+        return (int) Math.floor((float) Math.max(0, tabs.size() - 1) / (float) IGrid.TABS_PER_PAGE);
+    }
+
+    @Override
     public int getSize() {
         return size;
     }
@@ -246,32 +270,32 @@ public class PortableGrid implements IGrid, IPortableGrid {
 
     @Override
     public void onSortingTypeChanged(int type) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), type, getSearchBoxMode(), getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), type, getSearchBoxMode(), getSize(), getTabSelected(), getTabPage()));
 
         this.sortingType = type;
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
     public void onSortingDirectionChanged(int direction) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), direction, getSortingType(), getSearchBoxMode(), getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), direction, getSortingType(), getSearchBoxMode(), getSize(), getTabSelected(), getTabPage()));
 
         this.sortingDirection = direction;
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
     public void onSearchBoxModeChanged(int searchBoxMode) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), searchBoxMode, getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), searchBoxMode, getSize(), getTabSelected(), getTabPage()));
 
         this.searchBoxMode = searchBoxMode;
     }
 
     @Override
     public void onSizeChanged(int size) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), size, getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), size, getTabSelected(), getTabPage()));
 
         this.size = size;
 
@@ -284,29 +308,38 @@ public class PortableGrid implements IGrid, IPortableGrid {
     public void onTabSelectionChanged(int tab) {
         this.tabSelected = tab == tabSelected ? -1 : tab;
 
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), tabSelected));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), tabSelected, getTabPage()));
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
-    public List<Filter> getFilters() {
+    public void onTabPageChanged(int page) {
+        if (page >= 0 && page <= getTotalTabPages()) {
+            RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), getTabSelected(), page));
+
+            this.tabPage = page;
+        }
+    }
+
+    @Override
+    public List<IFilter> getFilters() {
         return filters;
     }
 
     @Override
-    public List<FilterTab> getTabs() {
+    public List<IGridTab> getTabs() {
         return tabs;
     }
 
     @Override
-    public ItemHandlerBase getFilter() {
+    public IItemHandlerModifiable getFilter() {
         return filter;
     }
 
     @Override
-    public TileDataParameter<Integer> getRedstoneModeConfig() {
-        return null;
+    public StorageTrackerItem getStorageTracker() {
+        return storageTracker;
     }
 
     @Override
@@ -344,7 +377,7 @@ public class PortableGrid implements IGrid, IPortableGrid {
         if (!player.getEntityWorld().isRemote && storage != null) {
             storage.writeToNBT();
 
-            RSUtils.writeItems(disk, 4, stack.getTagCompound());
+            StackUtils.writeItems(disk, 4, stack.getTagCompound());
         }
     }
 

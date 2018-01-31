@@ -1,11 +1,11 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.api.network.security.Permission;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
-import com.raoulvdberge.refinedstorage.proxy.CapabilityNetworkNodeProxy;
+import com.raoulvdberge.refinedstorage.capability.CapabilityNetworkNodeProxy;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraftforge.event.world.BlockEvent;
@@ -16,34 +16,38 @@ public class NetworkNodeListener {
     @SubscribeEvent
     public void onWorldTick(TickEvent.WorldTickEvent e) {
         if (!e.world.isRemote) {
-            e.world.profiler.startSection("network node ticking");
-
             if (e.phase == TickEvent.Phase.END) {
+                e.world.profiler.startSection("network node ticking");
+
                 for (INetworkNode node : API.instance().getNetworkNodeManager(e.world).all()) {
                     node.update();
                 }
-            }
 
-            e.world.profiler.endSection();
+                e.world.profiler.endSection();
+            }
         }
     }
 
     @SubscribeEvent
     public void onBlockPlace(BlockEvent.PlaceEvent e) {
         if (!e.getWorld().isRemote) {
-            for (EnumFacing facing : EnumFacing.VALUES) {
-                TileEntity tile = e.getWorld().getTileEntity(e.getBlockSnapshot().getPos().offset(facing));
+            TileEntity placed = e.getWorld().getTileEntity(e.getPos());
 
-                if (tile != null && tile.hasCapability(CapabilityNetworkNodeProxy.NETWORK_NODE_PROXY_CAPABILITY, facing.getOpposite())) {
-                    INetworkNodeProxy nodeProxy = tile.getCapability(CapabilityNetworkNodeProxy.NETWORK_NODE_PROXY_CAPABILITY, facing.getOpposite());
-                    INetworkNode node = nodeProxy.getNode();
+            if (placed != null && placed.hasCapability(CapabilityNetworkNodeProxy.NETWORK_NODE_PROXY_CAPABILITY, null)) {
+                for (EnumFacing facing : EnumFacing.VALUES) {
+                    TileEntity side = e.getWorld().getTileEntity(e.getBlockSnapshot().getPos().offset(facing));
 
-                    if (node.getNetwork() != null && !node.getNetwork().getSecurityManager().hasPermission(Permission.BUILD, e.getPlayer())) {
-                        RSUtils.sendNoPermissionMessage(e.getPlayer());
+                    if (side != null && side.hasCapability(CapabilityNetworkNodeProxy.NETWORK_NODE_PROXY_CAPABILITY, facing.getOpposite())) {
+                        INetworkNodeProxy nodeProxy = side.getCapability(CapabilityNetworkNodeProxy.NETWORK_NODE_PROXY_CAPABILITY, facing.getOpposite());
+                        INetworkNode node = nodeProxy.getNode();
 
-                        e.setCanceled(true);
+                        if (node.getNetwork() != null && !node.getNetwork().getSecurityManager().hasPermission(Permission.BUILD, e.getPlayer())) {
+                            WorldUtils.sendNoPermissionMessage(e.getPlayer());
 
-                        return;
+                            e.setCanceled(true);
+
+                            return;
+                        }
                     }
                 }
             }
@@ -60,7 +64,7 @@ public class NetworkNodeListener {
                 INetworkNode node = nodeProxy.getNode();
 
                 if (node.getNetwork() != null && !node.getNetwork().getSecurityManager().hasPermission(Permission.BUILD, e.getPlayer())) {
-                    RSUtils.sendNoPermissionMessage(e.getPlayer());
+                    WorldUtils.sendNoPermissionMessage(e.getPlayer());
 
                     e.setCanceled(true);
                 }

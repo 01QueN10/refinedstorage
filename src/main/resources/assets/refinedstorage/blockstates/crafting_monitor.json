@@ -22,7 +22,7 @@
     "connected": {
       "true": {
         "textures": {
-          "north": "refinedstorage:blocks/crafting_monitor_connected_front"
+          "north": "refinedstorage:blocks/crafting_monitor_front_connected"
         }
       },
       "false": {

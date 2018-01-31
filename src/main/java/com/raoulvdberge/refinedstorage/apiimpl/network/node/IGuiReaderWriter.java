@@ -10,13 +10,13 @@ public interface IGuiReaderWriter {
 
     void setChannel(String channel);
 
-    TileDataParameter<String> getChannelParameter();
+    TileDataParameter<String, ?> getChannelParameter();
 
-    TileDataParameter<Integer> getRedstoneModeParameter();
+    TileDataParameter<Integer, ?> getRedstoneModeParameter();
 
     INetwork getNetwork();
 
-    boolean canUpdate();
+    boolean isActive();
 
     default void onAdd(String name) {
         INetwork network = getNetwork();

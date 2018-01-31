@@ -7,21 +7,23 @@ import com.raoulvdberge.refinedstorage.apiimpl.API;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.items.ItemHandlerHelper;
-import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
 
 public class StackListItem implements IStackList<ItemStack> {
     private ArrayListMultimap<Item, ItemStack> stacks = ArrayListMultimap.create();
     private List<ItemStack> removeTracker = new LinkedList<>();
-    protected boolean needsCleanup = false;
-    private Set<Item> touchedItems = new HashSet<>();
 
     @Override
     public void add(@Nonnull ItemStack stack, int size) {
+        if (stack.isEmpty() || size <= 0) {
+            return;
+        }
+
         for (ItemStack otherStack : stacks.get(stack.getItem())) {
             if (API.instance().getComparer().isEqualNoQuantity(otherStack, stack)) {
                 if ((long) otherStack.getCount() + (long) size > Integer.MAX_VALUE) {
@@ -34,20 +36,19 @@ public class StackListItem implements IStackList<ItemStack> {
             }
         }
 
-        stacks.put(stack.getItem(), size == 0 ? stack.copy() : ItemHandlerHelper.copyStackWithSize(stack, size));
+        stacks.put(stack.getItem(), ItemHandlerHelper.copyStackWithSize(stack, size));
     }
 
     @Override
     public boolean remove(@Nonnull ItemStack stack, int size) {
         for (ItemStack otherStack : stacks.get(stack.getItem())) {
             if (API.instance().getComparer().isEqualNoQuantity(otherStack, stack)) {
-
                 boolean success = otherStack.getCount() - size >= 0;
-                otherStack.shrink(size);
 
-                if (otherStack.isEmpty()) {
-                    touchedItems.add(stack.getItem());
-                    needsCleanup = true;
+                if (otherStack.getCount() - size <= 0) {
+                    stacks.remove(otherStack.getItem(), otherStack);
+                } else {
+                    otherStack.shrink(size);
                 }
 
                 return success;
@@ -65,11 +66,11 @@ public class StackListItem implements IStackList<ItemStack> {
                 this.removeTracker.add(removed);
 
                 boolean success = otherStack.getCount() - size >= 0;
-                otherStack.shrink(size);
 
-                if (otherStack.isEmpty()) {
-                    touchedItems.add(stack.getItem());
-                    needsCleanup = true;
+                if (otherStack.getCount() - size <= 0) {
+                    stacks.remove(otherStack.getItem(), otherStack);
+                } else {
+                    otherStack.shrink(size);
                 }
 
                 return success;
@@ -106,10 +107,6 @@ public class StackListItem implements IStackList<ItemStack> {
     @Override
     @Nullable
     public ItemStack get(int hash) {
-        if (needsCleanup) {
-            clean();
-        }
-
         for (ItemStack stack : this.stacks.values()) {
             if (API.instance().getItemStackHashCode(stack) == hash) {
                 return stack;
@@ -125,19 +122,6 @@ public class StackListItem implements IStackList<ItemStack> {
     }
 
     @Override
-    public void clean() {
-        List<Pair<Item, ItemStack>> toRemove = touchedItems.stream()
-            .flatMap(item -> stacks.get(item).stream().map(stack -> Pair.of(item, stack)))
-            .filter(pair -> pair.getValue().isEmpty())
-            .collect(Collectors.toList());
-
-        toRemove.forEach(pair -> stacks.remove(pair.getLeft(), pair.getRight()));
-
-        touchedItems.clear();
-        needsCleanup = false;
-    }
-
-    @Override
     public boolean isEmpty() {
         return stacks.isEmpty();
     }
@@ -150,9 +134,6 @@ public class StackListItem implements IStackList<ItemStack> {
     @Nonnull
     @Override
     public Collection<ItemStack> getStacks() {
-        if (needsCleanup) {
-            clean();
-        }
         return stacks.values();
     }
 
@@ -160,10 +141,6 @@ public class StackListItem implements IStackList<ItemStack> {
     @Nonnull
     public IStackList<ItemStack> copy() {
         StackListItem list = new StackListItem();
-
-        if (needsCleanup) {
-            clean();
-        }
 
         for (ItemStack stack : stacks.values()) {
             list.stacks.put(stack.getItem(), stack.copy());
@@ -174,10 +151,6 @@ public class StackListItem implements IStackList<ItemStack> {
 
     @Nonnull
     public StackListItemOredicted getOredicted() {
-        if (needsCleanup) {
-            clean();
-        }
-
         return new StackListItemOredicted(this);
     }
 
@@ -188,8 +161,10 @@ public class StackListItem implements IStackList<ItemStack> {
 
     public static ItemStack[] toCraftingGrid(IStackList<ItemStack> list, List<ItemStack> grid, int compare) {
         ItemStack[] took = new ItemStack[Math.max(9, grid.size())];
+
         for (int i = 0; i < grid.size(); i++) {
             ItemStack input = grid.get(i);
+
             if (input != null) {
                 // This will be a tool, like a hammer
                 if (input.isItemStackDamageable()) {
@@ -197,14 +172,19 @@ public class StackListItem implements IStackList<ItemStack> {
                 } else {
                     compare |= IComparer.COMPARE_DAMAGE;
                 }
+
                 ItemStack actualInput = list.get(input, compare);
+
                 if (actualInput != null) {
                     ItemStack taken = ItemHandlerHelper.copyStackWithSize(actualInput, input.getCount());
+
                     took[i] = taken;
+
                     list.remove(taken, taken.getCount());
                 }
             }
         }
+
         return took;
     }
 }

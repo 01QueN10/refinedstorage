@@ -13,7 +13,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 public class TileInterface extends TileNode<NetworkNodeInterface> {
-    public static final TileDataParameter<Integer> COMPARE = IComparable.createParameter();
+    public static final TileDataParameter<Integer, TileInterface> COMPARE = IComparable.createParameter();
 
     public TileInterface() {
         dataManager.addWatchedParameter(COMPARE);
@@ -22,7 +22,7 @@ public class TileInterface extends TileNode<NetworkNodeInterface> {
     @Override
     public <T> T getCapability(@Nonnull Capability<T> capability, @Nullable EnumFacing facing) {
         if (capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY) {
-            return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(getNode().getItems());
+            return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(getNode().getItemsOrStorage());
         }
 
         return super.getCapability(capability, facing);
@@ -37,5 +37,10 @@ public class TileInterface extends TileNode<NetworkNodeInterface> {
     @Nonnull
     public NetworkNodeInterface createNode(World world, BlockPos pos) {
         return new NetworkNodeInterface(world, pos);
+    }
+
+    @Override
+    public String getNodeId() {
+        return NetworkNodeInterface.ID;
     }
 }

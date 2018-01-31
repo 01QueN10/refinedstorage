@@ -76,21 +76,28 @@ public class GuiCraftingMonitor extends GuiBase {
         int cancelButtonWidth = 14 + fontRenderer.getStringWidth(cancel);
         int cancelAllButtonWidth = 14 + fontRenderer.getStringWidth(cancelAll);
 
-        cancelButton = addButton(x + 7, y + 113, cancelButtonWidth, 20, cancel, false);
-        cancelAllButton = addButton(x + 7 + cancelButtonWidth + 4, y + 113, cancelAllButtonWidth, 20, cancelAll, false);
+        cancelButton = addButton(x + 7, y + 113, cancelButtonWidth, 20, cancel, false, true);
+        cancelAllButton = addButton(x + 7 + cancelButtonWidth + 4, y + 113, cancelAllButtonWidth, 20, cancelAll, false, true);
     }
 
     @Override
     public void update(int x, int y) {
-        scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
-        scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        if (scrollbar != null) {
+            scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
+            scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        }
 
         if (itemSelected >= getElements().size()) {
             itemSelected = -1;
         }
 
-        cancelButton.enabled = itemSelected != -1 && getElements().get(itemSelected).getTaskId() != -1;
-        cancelAllButton.enabled = getElements().size() > 0;
+        if (cancelButton != null) {
+            cancelButton.enabled = itemSelected != -1 && getElements().get(itemSelected).getTaskId() != -1;
+        }
+
+        if (cancelAllButton != null) {
+            cancelAllButton.enabled = getElements().size() > 0;
+        }
     }
 
     @Override
@@ -113,7 +120,7 @@ public class GuiCraftingMonitor extends GuiBase {
         drawString(7, 7, t(craftingMonitor.getGuiTitle()));
         drawString(7, 137, t("container.inventory"));
 
-        int item = scrollbar.getOffset();
+        int item = scrollbar != null ? scrollbar.getOffset() : 0;
 
         RenderHelper.enableGUIStandardItemLighting();
 
@@ -176,7 +183,7 @@ public class GuiCraftingMonitor extends GuiBase {
         itemSelected = -1;
 
         if (mouseButton == 0 && inBounds(8, 20, 144, 90, mouseX - guiLeft, mouseY - guiTop)) {
-            int item = scrollbar.getOffset();
+            int item = scrollbar != null ? scrollbar.getOffset() : 0;
 
             for (int i = 0; i < VISIBLE_ROWS; ++i) {
                 int ix = 8;

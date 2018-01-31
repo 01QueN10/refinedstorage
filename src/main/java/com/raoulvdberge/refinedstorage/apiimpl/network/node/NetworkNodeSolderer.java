@@ -1,7 +1,6 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.solderer.ISoldererRecipe;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
@@ -11,6 +10,8 @@ import com.raoulvdberge.refinedstorage.inventory.ItemHandlerListenerNetworkNode;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerProxy;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerUpgrade;
 import com.raoulvdberge.refinedstorage.item.ItemUpgrade;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -40,6 +41,13 @@ public class NetworkNodeSolderer extends NetworkNode {
 
             return stack;
         }
+
+        @Override
+        protected void onContentsChanged(int slot) {
+            super.onContentsChanged(slot);
+
+            recipe = API.instance().getSoldererRegistry().getRecipe(ingredients);
+        }
     };
 
     private ItemHandlerBase result = new ItemHandlerBase(1, new ItemHandlerListenerNetworkNode(this)) {
@@ -51,14 +59,12 @@ public class NetworkNodeSolderer extends NetworkNode {
     };
 
     private ItemHandlerProxy items = new ItemHandlerProxy(ingredients, result);
-
     private ItemHandlerUpgrade upgrades = new ItemHandlerUpgrade(4, new ItemHandlerListenerNetworkNode(this), ItemUpgrade.TYPE_SPEED);
 
+    private boolean wasWorking;
+    private boolean working;
     private ISoldererRecipe recipe;
-
-    private boolean working = false;
-    private boolean wasWorking = false;
-    private int progress = 0;
+    private int progress;
 
     public NetworkNodeSolderer(World world, BlockPos pos) {
         super(world, pos);
@@ -78,53 +84,49 @@ public class NetworkNodeSolderer extends NetworkNode {
 
             markDirty();
 
-            RSUtils.updateBlock(world, pos);
+            WorldUtils.updateBlock(world, pos);
         }
 
         if (network == null || !canUpdate()) {
             return;
         }
 
-        if (ingredients.getStackInSlot(1).isEmpty() && ingredients.getStackInSlot(2).isEmpty() && result.getStackInSlot(0).isEmpty()) {
-            stop();
-        } else {
-            ISoldererRecipe newRecipe = API.instance().getSoldererRegistry().getRecipe(ingredients);
+        if (working) {
+            if (recipe == null) {
+                working = false;
+                progress = 0;
 
-            if (newRecipe == null) {
-                stop();
-            } else if (newRecipe != recipe) {
-                boolean sameItem = !result.getStackInSlot(0).isEmpty() && API.instance().getComparer().isEqualNoQuantity(result.getStackInSlot(0), newRecipe.getResult());
+                markDirty();
+            } else if ((result.getStackInSlot(0).isEmpty() || API.instance().getComparer().isEqualNoQuantity(recipe.getResult(), result.getStackInSlot(0))) && result.getStackInSlot(0).getCount() + recipe.getResult().getCount() <= result.getStackInSlot(0).getMaxStackSize()) {
+                progress++;
 
-                if (result.getStackInSlot(0).isEmpty() || (sameItem && ((result.getStackInSlot(0).getCount() + newRecipe.getResult().getCount()) <= result.getStackInSlot(0).getMaxStackSize()))) {
-                    recipe = newRecipe;
-                    progress = 0;
-                    working = true;
+                if (progress >= getDuration()) {
+                    ItemStack resultSlot = result.getStackInSlot(0);
 
-                    markDirty();
-                }
-            } else if (working) {
-                progress += 1 + upgrades.getUpgradeCount(ItemUpgrade.TYPE_SPEED);
-
-                if (progress >= recipe.getDuration()) {
-                    if (!result.getStackInSlot(0).isEmpty()) {
-                        result.getStackInSlot(0).grow(recipe.getResult().getCount());
-                    } else {
+                    if (resultSlot.isEmpty()) {
                         result.setStackInSlot(0, recipe.getResult().copy());
+                    } else {
+                        resultSlot.grow(recipe.getResult().getCount());
                     }
 
                     for (int i = 0; i < 3; ++i) {
-                        if (!recipe.getRow(i).isEmpty()) {
-                            ingredients.extractItem(i, recipe.getRow(i).get(0).getCount(), false);
+                        ItemStack ingredientSlot = ingredients.getStackInSlot(i);
+
+                        if (!ingredientSlot.isEmpty()) {
+                            ingredientSlot.shrink(recipe.getRow(i).get(0).getCount());
                         }
                     }
 
-                    recipe = null;
+                    recipe = API.instance().getSoldererRegistry().getRecipe(ingredients);
                     progress = 0;
-                    // Don't set working to false yet, wait till the next update because we may have another stack waiting.
                 }
 
                 markDirty();
             }
+        } else if (recipe != null) {
+            working = true;
+
+            markDirty();
         }
     }
 
@@ -133,23 +135,21 @@ public class NetworkNodeSolderer extends NetworkNode {
         super.onConnectedStateChange(network, state);
 
         if (!state) {
-            stop();
+            recipe = null;
+            progress = 0;
+            working = false;
+        } else {
+            recipe = API.instance().getSoldererRegistry().getRecipe(ingredients);
         }
-    }
-
-    private void stop() {
-        progress = 0;
-        working = false;
-        recipe = null;
     }
 
     @Override
     public void read(NBTTagCompound tag) {
         super.read(tag);
 
-        RSUtils.readItems(ingredients, 0, tag);
-        RSUtils.readItems(upgrades, 1, tag);
-        RSUtils.readItems(result, 2, tag);
+        StackUtils.readItems(ingredients, 0, tag);
+        StackUtils.readItems(upgrades, 1, tag);
+        StackUtils.readItems(result, 2, tag);
 
         recipe = API.instance().getSoldererRegistry().getRecipe(ingredients);
 
@@ -172,9 +172,9 @@ public class NetworkNodeSolderer extends NetworkNode {
     public NBTTagCompound write(NBTTagCompound tag) {
         super.write(tag);
 
-        RSUtils.writeItems(ingredients, 0, tag);
-        RSUtils.writeItems(upgrades, 1, tag);
-        RSUtils.writeItems(result, 2, tag);
+        StackUtils.writeItems(ingredients, 0, tag);
+        StackUtils.writeItems(upgrades, 1, tag);
+        StackUtils.writeItems(result, 2, tag);
 
         tag.setBoolean(NBT_WORKING, working);
         tag.setInteger(NBT_PROGRESS, progress);
@@ -198,16 +198,20 @@ public class NetworkNodeSolderer extends NetworkNode {
         return upgrades;
     }
 
-    public ISoldererRecipe getRecipe() {
-        return recipe;
-    }
-
     public boolean isWorking() {
         return working;
     }
 
     public int getProgress() {
         return progress;
+    }
+
+    public int getDuration() {
+        if (recipe == null) {
+            return 0;
+        }
+
+        return (int) ((float) recipe.getDuration() - ((float) recipe.getDuration() / 100F * ((float) upgrades.getUpgradeCount(ItemUpgrade.TYPE_SPEED) * RS.INSTANCE.config.soldererSpeedIncreasePerSpeedUpgrade)));
     }
 
     @Override

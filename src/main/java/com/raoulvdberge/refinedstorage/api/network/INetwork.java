@@ -1,13 +1,14 @@
 package com.raoulvdberge.refinedstorage.api.network;
 
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingManager;
-import com.raoulvdberge.refinedstorage.api.network.grid.IFluidGridHandler;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IFluidGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.api.network.item.INetworkItemHandler;
 import com.raoulvdberge.refinedstorage.api.network.readerwriter.IReaderWriterChannel;
 import com.raoulvdberge.refinedstorage.api.network.security.ISecurityManager;
 import com.raoulvdberge.refinedstorage.api.storage.IStorage;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageCache;
+import com.raoulvdberge.refinedstorage.api.storage.IStorageTracker;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
@@ -91,10 +92,16 @@ public interface INetwork {
     /**
      * Sends a item storage change to all clients that are watching a grid connected to this network.
      *
-     * @param stack the stack
-     * @param delta the delta
+     * @param stack   the stack
+     * @param delta   the delta
+     * @param batched whether the delta can be batched to be sent all at once using {@link #sendBatchedItemStorageDeltaToClient()}
      */
-    void sendItemStorageDeltaToClient(ItemStack stack, int delta);
+    void sendItemStorageDeltaToClient(ItemStack stack, int delta, boolean batched);
+
+    /**
+     * Sends batched item storage deltas, accumulated through {@link #sendItemStorageDeltaToClient(ItemStack, int, boolean)}.
+     */
+    void sendBatchedItemStorageDeltaToClient();
 
     /**
      * Sends a grid update packet with all the fluids to all clients that are watching a grid connected to this network.
@@ -206,7 +213,7 @@ public interface INetwork {
      * @return null if we didn't extract anything, or a stack with the result
      */
     @Nullable
-    ItemStack extractItem(@Nonnull ItemStack stack, int size, int flags, boolean simulate, Predicate<IStorage> filter);
+    ItemStack extractItem(@Nonnull ItemStack stack, int size, int flags, boolean simulate, Predicate<IStorage<ItemStack>> filter);
 
     /**
      * Extracts an item from this network.
@@ -267,6 +274,16 @@ public interface INetwork {
     default FluidStack extractFluid(FluidStack stack, int size, boolean simulate) {
         return extractFluid(stack, size, IComparer.COMPARE_NBT, simulate);
     }
+
+    /**
+     * @return the storage tracker for items
+     */
+    IStorageTracker<ItemStack> getItemStorageTracker();
+
+    /**
+     * @return the storage tracker for fluids
+     */
+    IStorageTracker<FluidStack> getFluidStorageTracker();
 
     /**
      * @return the world where this network is in

@@ -7,9 +7,9 @@ import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
 import net.minecraft.util.text.TextFormatting;
 
 public class SideButtonMode extends SideButton {
-    private TileDataParameter<Integer> parameter;
+    private TileDataParameter<Integer, ?> parameter;
 
-    public SideButtonMode(GuiBase gui, TileDataParameter<Integer> parameter) {
+    public SideButtonMode(GuiBase gui, TileDataParameter<Integer, ?> parameter) {
         super(gui);
 
         this.parameter = parameter;
@@ -17,7 +17,7 @@ public class SideButtonMode extends SideButton {
 
     @Override
     public String getTooltip() {
-        return TextFormatting.GREEN + GuiBase.t("sidebutton.refinedstorage:mode") + TextFormatting.RESET + "\n" + GuiBase.t("sidebutton.refinedstorage:mode." + (parameter.getValue() == IFilterable.WHITELIST ? "whitelist" : "blacklist"));
+        return GuiBase.t("sidebutton.refinedstorage:mode") + "\n" + TextFormatting.GRAY + GuiBase.t("sidebutton.refinedstorage:mode." + (parameter.getValue() == IFilterable.WHITELIST ? "whitelist" : "blacklist"));
     }
 
     @Override

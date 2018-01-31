@@ -2,12 +2,12 @@ package com.raoulvdberge.refinedstorage.apiimpl.network.node;
 
 import com.raoulvdberge.refinedstorage.RS;
 import com.raoulvdberge.refinedstorage.RSBlocks;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.api.storage.IStorage;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageProvider;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheFluid;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageDiskFluid;
 import com.raoulvdberge.refinedstorage.block.BlockFluidStorage;
 import com.raoulvdberge.refinedstorage.block.FluidStorageType;
@@ -16,6 +16,8 @@ import com.raoulvdberge.refinedstorage.inventory.ItemHandlerListenerNetworkNode;
 import com.raoulvdberge.refinedstorage.tile.TileFluidStorage;
 import com.raoulvdberge.refinedstorage.tile.config.*;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
+import com.raoulvdberge.refinedstorage.util.AccessTypeUtils;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -49,7 +51,7 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
         @Nullable
         public FluidStack insert(@Nonnull FluidStack stack, int size, boolean simulate) {
             if (!IFilterable.canTakeFluids(filters, mode, compare, stack)) {
-                return RSUtils.copyStackWithSize(stack, size);
+                return StackUtils.copy(stack, size);
             }
 
             return super.insert(stack, size, simulate);
@@ -116,7 +118,7 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
     public void onConnectedStateChange(INetwork network, boolean state) {
         super.onConnectedStateChange(network, state);
 
-        network.getFluidStorageCache().invalidate();
+        network.getNodeGraph().schedulePostRebuildAction(StorageCacheFluid.INVALIDATE);
     }
 
     @Override
@@ -160,14 +162,14 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
     public NBTTagCompound writeConfiguration(NBTTagCompound tag) {
         super.writeConfiguration(tag);
 
-        RSUtils.writeItems(filters, 0, tag);
+        StackUtils.writeItems(filters, 0, tag);
 
         tag.setInteger(NBT_PRIORITY, priority);
         tag.setInteger(NBT_COMPARE, compare);
         tag.setInteger(NBT_MODE, mode);
         tag.setBoolean(NBT_VOID_EXCESS, voidExcess);
 
-        RSUtils.writeAccessType(tag, accessType);
+        AccessTypeUtils.writeAccessType(tag, accessType);
 
         return tag;
     }
@@ -176,7 +178,7 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
     public void readConfiguration(NBTTagCompound tag) {
         super.readConfiguration(tag);
 
-        RSUtils.readItems(filters, 0, tag);
+        StackUtils.readItems(filters, 0, tag);
 
         if (tag.hasKey(NBT_PRIORITY)) {
             priority = tag.getInteger(NBT_PRIORITY);
@@ -194,7 +196,7 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
             voidExcess = tag.getBoolean(NBT_VOID_EXCESS);
         }
 
-        accessType = RSUtils.readAccessType(tag);
+        accessType = AccessTypeUtils.readAccessType(tag);
     }
 
     public FluidStorageType getType() {
@@ -243,37 +245,37 @@ public class NetworkNodeFluidStorage extends NetworkNode implements IGuiStorage,
     }
 
     @Override
-    public TileDataParameter<Integer> getTypeParameter() {
+    public TileDataParameter<Integer, ?> getTypeParameter() {
         return null;
     }
 
     @Override
-    public TileDataParameter<Integer> getRedstoneModeParameter() {
+    public TileDataParameter<Integer, ?> getRedstoneModeParameter() {
         return TileFluidStorage.REDSTONE_MODE;
     }
 
     @Override
-    public TileDataParameter<Integer> getCompareParameter() {
+    public TileDataParameter<Integer, ?> getCompareParameter() {
         return TileFluidStorage.COMPARE;
     }
 
     @Override
-    public TileDataParameter<Integer> getFilterParameter() {
+    public TileDataParameter<Integer, ?> getFilterParameter() {
         return TileFluidStorage.MODE;
     }
 
     @Override
-    public TileDataParameter<Integer> getPriorityParameter() {
+    public TileDataParameter<Integer, ?> getPriorityParameter() {
         return TileFluidStorage.PRIORITY;
     }
 
     @Override
-    public TileDataParameter<Boolean> getVoidExcessParameter() {
+    public TileDataParameter<Boolean, ?> getVoidExcessParameter() {
         return TileFluidStorage.VOID_EXCESS;
     }
 
     @Override
-    public TileDataParameter<AccessType> getAccessTypeParameter() {
+    public TileDataParameter<AccessType, ?> getAccessTypeParameter() {
         return TileFluidStorage.ACCESS_TYPE;
     }
 

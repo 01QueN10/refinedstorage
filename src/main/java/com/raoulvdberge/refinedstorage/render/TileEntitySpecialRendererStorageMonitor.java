@@ -1,6 +1,6 @@
 package com.raoulvdberge.refinedstorage.render;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
+import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.tile.TileStorageMonitor;
 import com.raoulvdberge.refinedstorage.tile.config.IType;
 import net.minecraft.client.Minecraft;
@@ -27,7 +27,7 @@ public class TileEntitySpecialRendererStorageMonitor extends TileEntitySpecialRe
         float rotY = 0;
         float rotZ = 0;
 
-        String amount = tile.getType() == IType.ITEMS ? RSUtils.formatQuantity(tile.getAmount()) : RSUtils.QUANTITY_FORMATTER.format((float) tile.getAmount() / 1000F);
+        String amount = tile.getType() == IType.ITEMS ? API.instance().getQuantityFormatter().formatWithUnits(tile.getAmount()) : API.instance().getQuantityFormatter().formatWithUnits((int) ((float) tile.getAmount() / 1000F));
 
         // Very bad, but I don't know how to translate a 2D font width to a 3D font width...
         float textWidth = 0;

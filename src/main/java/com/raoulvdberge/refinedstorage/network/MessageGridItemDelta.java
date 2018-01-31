@@ -1,55 +1,122 @@
 package com.raoulvdberge.refinedstorage.network;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
+import com.raoulvdberge.refinedstorage.api.storage.IStorageTracker;
 import com.raoulvdberge.refinedstorage.gui.grid.GuiGrid;
 import com.raoulvdberge.refinedstorage.gui.grid.stack.GridStackItem;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraftforge.fml.common.network.ByteBufUtils;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
+import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nullable;
+import java.util.LinkedList;
+import java.util.List;
 
 public class MessageGridItemDelta implements IMessage, IMessageHandler<MessageGridItemDelta, IMessage> {
     @Nullable
     private INetwork network;
+    private IStorageTracker<ItemStack> storageTracker;
+
+    private List<Pair<ItemStack, Integer>> deltas;
+    @Nullable
     private ItemStack stack;
     private int delta;
 
-    private GridStackItem clientStack;
+    @Nullable
+    private GridStackItem gridStack;
+    private List<Pair<GridStackItem, Integer>> gridStacks;
 
     public MessageGridItemDelta() {
     }
 
-    public MessageGridItemDelta(@Nullable INetwork network, ItemStack stack, int delta) {
+    public MessageGridItemDelta(@Nullable INetwork network, IStorageTracker<ItemStack> storageTracker, ItemStack stack, int delta) {
         this.network = network;
+        this.storageTracker = storageTracker;
         this.stack = stack;
         this.delta = delta;
     }
 
+    public MessageGridItemDelta(@Nullable INetwork network, IStorageTracker<ItemStack> storageTracker, List<Pair<ItemStack, Integer>> deltas) {
+        this.network = network;
+        this.storageTracker = storageTracker;
+        this.deltas = deltas;
+    }
+
     @Override
     public void fromBytes(ByteBuf buf) {
-        clientStack = new GridStackItem(buf);
-        delta = buf.readInt();
+        int size = buf.readInt();
+
+        if (size == 1) {
+            gridStack = new GridStackItem(buf);
+            delta = buf.readInt();
+        } else {
+            gridStacks = new LinkedList<>();
+
+            for (int i = 0; i < size; ++i) {
+                gridStacks.add(Pair.of(new GridStackItem(buf), buf.readInt()));
+            }
+        }
     }
 
     @Override
     public void toBytes(ByteBuf buf) {
-        RSUtils.writeItemStack(buf, stack, network, false);
-        buf.writeInt(delta);
+        if (stack != null) {
+            buf.writeInt(1);
+
+            StackUtils.writeItemStack(buf, stack, network, false);
+
+            IStorageTracker.IStorageTrackerEntry entry = storageTracker.get(stack);
+            buf.writeBoolean(entry != null);
+            if (entry != null) {
+                buf.writeLong(entry.getTime());
+                ByteBufUtils.writeUTF8String(buf, entry.getName());
+            }
+
+            buf.writeInt(delta);
+        } else {
+            buf.writeInt(deltas.size());
+
+            for (Pair<ItemStack, Integer> delta : deltas) {
+                StackUtils.writeItemStack(buf, delta.getLeft(), network, false);
+
+                IStorageTracker.IStorageTrackerEntry entry = storageTracker.get(delta.getLeft());
+                buf.writeBoolean(entry != null);
+                if (entry != null) {
+                    buf.writeLong(entry.getTime());
+                    ByteBufUtils.writeUTF8String(buf, entry.getName());
+                }
+
+                buf.writeInt(delta.getRight());
+            }
+        }
     }
 
     @Override
     public IMessage onMessage(MessageGridItemDelta message, MessageContext ctx) {
-        Item item = message.clientStack.getStack().getItem();
+        if (message.gridStack != null) {
+            process(message.gridStack, message.delta);
+        } else {
+            message.gridStacks.forEach(p -> process(p.getLeft(), p.getRight()));
+        }
+
+        GuiGrid.scheduleSort();
+
+        return null;
+    }
+
+    private void process(GridStackItem gridStack, int delta) {
+        Item item = gridStack.getStack().getItem();
 
         for (GridStackItem stack : GuiGrid.ITEMS.get(item)) {
-            if (stack.equals(message.clientStack)) {
-                if (stack.getStack().getCount() + message.delta == 0) {
-                    if (message.clientStack.isCraftable()) {
+            if (stack.equals(gridStack)) {
+                if (stack.getStack().getCount() + delta <= 0) {
+                    if (gridStack.isCraftable()) {
                         stack.setDisplayCraftText(true);
                     } else {
                         GuiGrid.ITEMS.remove(item, stack);
@@ -58,23 +125,20 @@ public class MessageGridItemDelta implements IMessage, IMessageHandler<MessageGr
                     if (stack.doesDisplayCraftText()) {
                         stack.setDisplayCraftText(false);
 
-                        stack.getStack().setCount(message.delta);
+                        stack.getStack().setCount(delta);
                     } else {
-                        stack.getStack().grow(message.delta);
+                        stack.getStack().grow(delta);
                     }
                 }
 
-                GuiGrid.markForSorting();
+                stack.setTrackerEntry(gridStack.getTrackerEntry());
 
-                return null;
+                return;
             }
         }
 
-        message.clientStack.getStack().setCount(message.delta);
+        gridStack.getStack().setCount(delta);
 
-        GuiGrid.ITEMS.put(item, message.clientStack);
-        GuiGrid.markForSorting();
-
-        return null;
+        GuiGrid.ITEMS.put(item, gridStack);
     }
 }

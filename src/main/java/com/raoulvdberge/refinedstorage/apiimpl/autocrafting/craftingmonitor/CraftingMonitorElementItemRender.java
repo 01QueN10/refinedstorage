@@ -3,7 +3,7 @@ package com.raoulvdberge.refinedstorage.apiimpl.autocrafting.craftingmonitor;
 import com.raoulvdberge.refinedstorage.api.autocrafting.craftingmonitor.ICraftingMonitorElement;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawers;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
-import com.raoulvdberge.refinedstorage.gui.GuiBase;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.item.ItemStack;
@@ -31,12 +31,12 @@ public class CraftingMonitorElementItemRender implements ICraftingMonitorElement
     public void draw(int x, int y, IElementDrawers drawers) {
         drawers.getItemDrawer().draw(x + 2 + offset, y + 1, stack);
 
-        float scale = 0.5f;
+        float scale = drawers.getFontRenderer().getUnicodeFlag() ? 1F : 0.5F;
 
         GlStateManager.pushMatrix();
         GlStateManager.scale(scale, scale, 1);
 
-        drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + 21 + offset, scale), GuiBase.calculateOffsetOnScale(y + 7, scale), quantity + "x " + stack.getDisplayName());
+        drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + 21 + offset, scale), RenderUtils.getOffsetOnScale(y + 7, scale), quantity + "x " + stack.getDisplayName());
 
         GlStateManager.popMatrix();
     }

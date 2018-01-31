@@ -6,10 +6,10 @@ import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
 import net.minecraft.util.text.TextFormatting;
 
 public class SideButtonVoidExcess extends SideButton {
-    private TileDataParameter<Boolean> parameter;
+    private TileDataParameter<Boolean, ?> parameter;
     private String type;
 
-    public SideButtonVoidExcess(GuiBase gui, TileDataParameter<Boolean> parameter, String type) {
+    public SideButtonVoidExcess(GuiBase gui, TileDataParameter<Boolean, ?> parameter, String type) {
         super(gui);
 
         this.parameter = parameter;
@@ -18,7 +18,7 @@ public class SideButtonVoidExcess extends SideButton {
 
     @Override
     public String getTooltip() {
-        return TextFormatting.LIGHT_PURPLE + GuiBase.t("sidebutton.refinedstorage:void_excess." + type) + TextFormatting.RESET + "\n" + GuiBase.t(parameter.getValue() ? "gui.yes" : "gui.no");
+        return GuiBase.t("sidebutton.refinedstorage:void_excess." + type) + "\n" + TextFormatting.GRAY + GuiBase.t(parameter.getValue() ? "gui.yes" : "gui.no");
     }
 
     @Override

@@ -58,6 +58,7 @@ public final class RSConfig {
     //region Grid
     public int maxRowsStretch;
     public boolean largeFont;
+    public boolean detailedTooltip;
     //endregion
 
     //region Wireless Transmitter
@@ -96,6 +97,7 @@ public final class RSConfig {
     //region Upgrades
     public int rangeUpgradeUsage;
     public int speedUpgradeUsage;
+    public float soldererSpeedIncreasePerSpeedUpgrade;
     public int craftingUpgradeUsage;
     public int stackUpgradeUsage;
     public int interdimensionalUpgradeUsage;
@@ -161,9 +163,9 @@ public final class RSConfig {
         craftingGridUsage = config.getInt("craftingGrid", ENERGY, 4, 0, Integer.MAX_VALUE, "The energy used by Crafting Grids");
         patternGridUsage = config.getInt("patternGrid", ENERGY, 3, 0, Integer.MAX_VALUE, "The energy used by Pattern Grids");
         fluidGridUsage = config.getInt("fluidGrid", ENERGY, 2, 0, Integer.MAX_VALUE, "The energy used by Fluid Grids");
-        networkTransmitterUsage = config.getInt("networkTransmitter", ENERGY, 50, 0, Integer.MAX_VALUE, "The base energy used by Network Transmitters");
-        networkTransmitterPerBlockUsage = config.getFloat("networkTransmitterPerBlock", ENERGY, 4, 0, Float.MAX_VALUE, "The additional energy per block that the Network Transmitter uses, gets rounded up");
-        networkReceiverUsage = config.getInt("networkReceiver", ENERGY, 15, 0, Integer.MAX_VALUE, "The energy used by Network Receivers");
+        networkTransmitterUsage = config.getInt("networkTransmitter", ENERGY, 0, 0, Integer.MAX_VALUE, "The base energy used by Network Transmitters");
+        networkTransmitterPerBlockUsage = config.getFloat("networkTransmitterPerBlock", ENERGY, 1, 0, Float.MAX_VALUE, "The additional energy per block that the Network Transmitter uses, gets rounded up");
+        networkReceiverUsage = config.getInt("networkReceiver", ENERGY, 0, 0, Integer.MAX_VALUE, "The energy used by Network Receivers");
         diskManipulatorUsage = config.getInt("diskManipulator", ENERGY, 3, 0, Integer.MAX_VALUE, "The energy used by Disk Manipulators");
         readerUsage = config.getInt("reader", ENERGY, 2, 0, Integer.MAX_VALUE, "The energy used by Readers");
         writerUsage = config.getInt("writer", ENERGY, 2, 0, Integer.MAX_VALUE, "The energy used by Writers");
@@ -178,7 +180,8 @@ public final class RSConfig {
 
         //region Grid
         maxRowsStretch = config.getInt("maxRowsStretch", GRID, Integer.MAX_VALUE, 3, Integer.MAX_VALUE, "The maximum amount of rows that the Grid can show when stretched");
-        largeFont = config.getBoolean("largeFont", GRID, false, "Whether the controller should use a large font for stack quantity display");
+        largeFont = config.getBoolean("largeFont", GRID, false, "Whether the Grid should use a large font for stack quantity display");
+        detailedTooltip = config.getBoolean("detailedTooltip", GRID, true, "Whether the Grid should display a detailed tooltip when hovering over an item or fluid");
         //endregion
 
         //region Wireless Transmitter
@@ -217,6 +220,7 @@ public final class RSConfig {
         //region Upgrades
         rangeUpgradeUsage = config.getInt("range", UPGRADES, 8, 0, Integer.MAX_VALUE, "The additional energy used per Range Upgrade");
         speedUpgradeUsage = config.getInt("speed", UPGRADES, 2, 0, Integer.MAX_VALUE, "The additional energy used per Speed Upgrade");
+        soldererSpeedIncreasePerSpeedUpgrade = config.getFloat("soldererSpeedIncreasePerSpeedUpgrade", UPGRADES, 22.5F, 0F, 25F, "The speed increase percentage in the Solderer per Speed Upgrade");
         craftingUpgradeUsage = config.getInt("crafting", UPGRADES, 5, 0, Integer.MAX_VALUE, "The additional energy used per Crafting Upgrade");
         stackUpgradeUsage = config.getInt("stack", UPGRADES, 12, 0, Integer.MAX_VALUE, "The additional energy used per Stack Upgrade");
         interdimensionalUpgradeUsage = config.getInt("interdimensional", UPGRADES, 1000, 0, Integer.MAX_VALUE, "The additional energy used by the Interdimensional Upgrade");
@@ -233,15 +237,15 @@ public final class RSConfig {
     public List<IConfigElement> getConfigElements() {
         List<IConfigElement> list = new ArrayList<>();
 
-        list.addAll(new ConfigElement(config.getCategory(ENERGY)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(CONTROLLER)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(UPGRADES)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(WIRELESS_TRANSMITTER)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(GRID)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(WIRELESS_GRID)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(WIRELESS_FLUID_GRID)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(WIRELESS_CRAFTING_MONITOR)).getChildElements());
-        list.addAll(new ConfigElement(config.getCategory(PORTABLE_GRID)).getChildElements());
+        list.add(new ConfigElement(config.getCategory(ENERGY)));
+        list.add(new ConfigElement(config.getCategory(CONTROLLER)));
+        list.add(new ConfigElement(config.getCategory(UPGRADES)));
+        list.add(new ConfigElement(config.getCategory(WIRELESS_TRANSMITTER)));
+        list.add(new ConfigElement(config.getCategory(GRID)));
+        list.add(new ConfigElement(config.getCategory(WIRELESS_GRID)));
+        list.add(new ConfigElement(config.getCategory(WIRELESS_FLUID_GRID)));
+        list.add(new ConfigElement(config.getCategory(WIRELESS_CRAFTING_MONITOR)));
+        list.add(new ConfigElement(config.getCategory(PORTABLE_GRID)));
 
         return list;
     }

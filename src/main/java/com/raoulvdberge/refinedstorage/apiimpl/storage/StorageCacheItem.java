@@ -1,6 +1,5 @@
 package com.raoulvdberge.refinedstorage.apiimpl.storage;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.api.storage.IStorage;
@@ -11,17 +10,18 @@ import com.raoulvdberge.refinedstorage.apiimpl.API;
 import net.minecraft.item.ItemStack;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class StorageCacheItem implements IStorageCache<ItemStack> {
+    public static final Consumer<INetwork> INVALIDATE = network -> network.getItemStorageCache().invalidate();
+
     private INetwork network;
     private CopyOnWriteArrayList<IStorage<ItemStack>> storages = new CopyOnWriteArrayList<>();
     private IStackList<ItemStack> list = API.instance().createItemStackList();
-    @Nullable
-    private BiConsumer<ItemStack, Integer> listener;
+    private List<Runnable> listeners = new LinkedList<>();
 
     public StorageCacheItem(INetwork network) {
         this.network = network;
@@ -46,46 +46,49 @@ public class StorageCacheItem implements IStorageCache<ItemStack> {
 
             for (ItemStack stack : storage.getStacks()) {
                 if (!stack.isEmpty()) {
-                    add(stack, stack.getCount(), true);
+                    add(stack, stack.getCount(), true, false);
                 }
             }
         }
+
+        listeners.forEach(Runnable::run);
 
         network.sendItemStorageToClient();
     }
 
     @Override
-    public synchronized void add(@Nonnull ItemStack stack, int size, boolean rebuilding) {
+    public synchronized void add(@Nonnull ItemStack stack, int size, boolean rebuilding, boolean batched) {
         list.add(stack, size);
 
         if (!rebuilding) {
-            network.sendItemStorageDeltaToClient(stack, size);
+            network.sendItemStorageDeltaToClient(stack, size, batched);
 
-            if (listener != null) {
-                listener.accept(stack, size);
-            }
+            listeners.forEach(Runnable::run);
         }
     }
 
     @Override
-    public synchronized void remove(@Nonnull ItemStack stack, int size) {
+    public synchronized void remove(@Nonnull ItemStack stack, int size, boolean batched) {
         if (list.remove(stack, size)) {
-            network.sendItemStorageDeltaToClient(stack, -size);
+            network.sendItemStorageDeltaToClient(stack, -size, batched);
 
-            if (listener != null) {
-                listener.accept(stack, -size);
-            }
+            listeners.forEach(Runnable::run);
         }
     }
 
     @Override
-    public void setListener(@Nullable BiConsumer<ItemStack, Integer> listener) {
-        this.listener = listener;
+    public void addListener(Runnable listener) {
+        listeners.add(listener);
+    }
+
+    @Override
+    public void removeListener(Runnable listener) {
+        listeners.remove(listener);
     }
 
     @Override
     public void sort() {
-        storages.sort(RSUtils.STORAGE_COMPARATOR);
+        storages.sort(IStorage.COMPARATOR);
     }
 
     @Override

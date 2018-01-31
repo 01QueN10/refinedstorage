@@ -4,8 +4,6 @@ import com.raoulvdberge.refinedstorage.apiimpl.network.node.diskmanipulator.Netw
 import com.raoulvdberge.refinedstorage.tile.config.IComparable;
 import com.raoulvdberge.refinedstorage.tile.config.IFilterable;
 import com.raoulvdberge.refinedstorage.tile.config.IType;
-import com.raoulvdberge.refinedstorage.tile.data.ITileDataConsumer;
-import com.raoulvdberge.refinedstorage.tile.data.ITileDataProducer;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.datasync.DataSerializers;
@@ -19,21 +17,12 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 public class TileDiskManipulator extends TileNode<NetworkNodeDiskManipulator> {
-    public static final TileDataParameter<Integer> COMPARE = IComparable.createParameter();
-    public static final TileDataParameter<Integer> MODE = IFilterable.createParameter();
-    public static final TileDataParameter<Integer> TYPE = IType.createParameter();
-
-    public static final TileDataParameter<Integer> IO_MODE = new TileDataParameter<>(DataSerializers.VARINT, NetworkNodeDiskManipulator.IO_MODE_INSERT, new ITileDataProducer<Integer, TileDiskManipulator>() {
-        @Override
-        public Integer getValue(TileDiskManipulator tile) {
-            return tile.getNode().getIoMode();
-        }
-    }, new ITileDataConsumer<Integer, TileDiskManipulator>() {
-        @Override
-        public void setValue(TileDiskManipulator tile, Integer value) {
-            tile.getNode().setIoMode(value);
-            tile.getNode().markDirty();
-        }
+    public static final TileDataParameter<Integer, TileDiskManipulator> COMPARE = IComparable.createParameter();
+    public static final TileDataParameter<Integer, TileDiskManipulator> MODE = IFilterable.createParameter();
+    public static final TileDataParameter<Integer, TileDiskManipulator> TYPE = IType.createParameter();
+    public static final TileDataParameter<Integer, TileDiskManipulator> IO_MODE = new TileDataParameter<>(DataSerializers.VARINT, NetworkNodeDiskManipulator.IO_MODE_INSERT, t -> t.getNode().getIoMode(), (t, v) -> {
+        t.getNode().setIoMode(v);
+        t.getNode().markDirty();
     });
 
     private Integer[] diskState = new Integer[6];
@@ -70,7 +59,7 @@ public class TileDiskManipulator extends TileNode<NetworkNodeDiskManipulator> {
     @Override
     public <T> T getCapability(@Nonnull Capability<T> capability, @Nullable EnumFacing facing) {
         if (capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY) {
-            return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(facing == EnumFacing.DOWN ? getNode().getOutputDisks() : getNode().getInputDisks());
+            return CapabilityItemHandler.ITEM_HANDLER_CAPABILITY.cast(getNode().getDisks());
         }
 
         return super.getCapability(capability, facing);
@@ -85,5 +74,10 @@ public class TileDiskManipulator extends TileNode<NetworkNodeDiskManipulator> {
     @Nonnull
     public NetworkNodeDiskManipulator createNode(World world, BlockPos pos) {
         return new NetworkNodeDiskManipulator(world, pos);
+    }
+
+    @Override
+    public String getNodeId() {
+        return NetworkNodeDiskManipulator.ID;
     }
 }

@@ -1,9 +1,9 @@
 package com.raoulvdberge.refinedstorage.render;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.CraftingPattern;
 import com.raoulvdberge.refinedstorage.gui.GuiBase;
 import com.raoulvdberge.refinedstorage.item.ItemPattern;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -15,7 +15,6 @@ import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.world.World;
-import net.minecraftforge.client.model.IPerspectiveAwareModel;
 import net.minecraftforge.common.model.TRSRTransformation;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -23,7 +22,7 @@ import javax.annotation.Nullable;
 import javax.vecmath.Matrix4f;
 import java.util.List;
 
-public class BakedModelPattern implements IBakedModel, IPerspectiveAwareModel {
+public class BakedModelPattern implements IBakedModel {
     private IBakedModel base;
 
     public BakedModelPattern(IBakedModel base) {
@@ -32,9 +31,9 @@ public class BakedModelPattern implements IBakedModel, IPerspectiveAwareModel {
 
     @Override
     public Pair<? extends IBakedModel, Matrix4f> handlePerspective(ItemCameraTransforms.TransformType cameraTransformType) {
-        TRSRTransformation transform = RSUtils.getDefaultItemTransforms().get(cameraTransformType);
+        TRSRTransformation transform = RenderUtils.getDefaultItemTransforms().get(cameraTransformType);
 
-        return Pair.of(this, transform == null ? RSUtils.EMPTY_MATRIX_TRANSFORM : transform.getMatrix());
+        return Pair.of(this, transform == null ? RenderUtils.EMPTY_MATRIX_TRANSFORM : transform.getMatrix());
     }
 
     @Override

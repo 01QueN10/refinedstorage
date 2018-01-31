@@ -36,8 +36,6 @@ public class ItemFluidStorageDisk extends ItemBase implements IStorageDiskProvid
     public static final int TYPE_CREATIVE = 4;
     public static final int TYPE_DEBUG = 5;
 
-    private NBTTagCompound debugDiskTag;
-
     public ItemFluidStorageDisk() {
         super("fluid_storage_disk");
 
@@ -58,19 +56,17 @@ public class ItemFluidStorageDisk extends ItemBase implements IStorageDiskProvid
     }
 
     private void applyDebugDiskData(ItemStack stack) {
-        if (debugDiskTag == null) {
-            debugDiskTag = API.instance().getDefaultStorageDiskBehavior().getTag(StorageDiskType.FLUIDS);
+        NBTTagCompound debugDiskTag = API.instance().getDefaultStorageDiskBehavior().getTag(StorageDiskType.FLUIDS);
 
-            StorageDiskFluid storage = new StorageDiskFluid(debugDiskTag, -1);
+        StorageDiskFluid storage = new StorageDiskFluid(debugDiskTag, -1);
 
-            for (Fluid fluid : FluidRegistry.getRegisteredFluids().values()) {
-                storage.insert(new FluidStack(fluid, 0), Fluid.BUCKET_VOLUME * 1000, false);
-            }
-
-            storage.writeToNBT();
+        for (Fluid fluid : FluidRegistry.getRegisteredFluids().values()) {
+            storage.insert(new FluidStack(fluid, 0), Fluid.BUCKET_VOLUME * 1000, false);
         }
 
-        stack.setTagCompound(debugDiskTag.copy());
+        storage.writeToNBT();
+
+        stack.setTagCompound(debugDiskTag);
     }
 
     @Override
@@ -113,9 +109,9 @@ public class ItemFluidStorageDisk extends ItemBase implements IStorageDiskProvid
 
         if (storage.isValid(stack)) {
             if (storage.getCapacity() == -1) {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", storage.getStored()));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", API.instance().getQuantityFormatter().format(storage.getStored())));
             } else {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", storage.getStored(), storage.getCapacity()));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", API.instance().getQuantityFormatter().format(storage.getStored()), API.instance().getQuantityFormatter().format(storage.getCapacity())));
             }
         }
     }

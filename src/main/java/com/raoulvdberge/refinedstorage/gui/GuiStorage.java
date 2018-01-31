@@ -1,11 +1,12 @@
 package com.raoulvdberge.refinedstorage.gui;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
+import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.IGuiStorage;
 import com.raoulvdberge.refinedstorage.container.ContainerBase;
 import com.raoulvdberge.refinedstorage.gui.sidebutton.*;
 import net.minecraft.client.gui.GuiButton;
+import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 
 import java.io.IOException;
@@ -84,8 +85,8 @@ public class GuiStorage extends GuiBase {
     public void drawForeground(int mouseX, int mouseY) {
         drawString(7, 7, t(gui.getGuiTitle()));
         drawString(7, 42, gui.getCapacity() == -1 ?
-            t("misc.refinedstorage:storage.stored_minimal", RSUtils.formatQuantity(gui.getStored())) :
-            t("misc.refinedstorage:storage.stored_capacity_minimal", RSUtils.formatQuantity(gui.getStored()), RSUtils.formatQuantity(gui.getCapacity()))
+            t("misc.refinedstorage:storage.stored_minimal", API.instance().getQuantityFormatter().formatWithUnits(gui.getStored())) :
+            t("misc.refinedstorage:storage.stored_capacity_minimal", API.instance().getQuantityFormatter().formatWithUnits(gui.getStored()), API.instance().getQuantityFormatter().formatWithUnits(gui.getCapacity()))
         );
 
         if (texture.contains("disk_drive")) { // HACK!
@@ -102,9 +103,9 @@ public class GuiStorage extends GuiBase {
             }
 
             drawTooltip(mouseX, mouseY, (gui.getCapacity() == -1 ?
-                t("misc.refinedstorage:storage.stored_minimal", gui.getStored()) :
-                t("misc.refinedstorage:storage.stored_capacity_minimal", gui.getStored(), gui.getCapacity())
-            ) + "\n" + t("misc.refinedstorage:storage.full", full));
+                t("misc.refinedstorage:storage.stored_minimal", API.instance().getQuantityFormatter().format(gui.getStored())) :
+                t("misc.refinedstorage:storage.stored_capacity_minimal", API.instance().getQuantityFormatter().format(gui.getStored()), API.instance().getQuantityFormatter().format(gui.getCapacity()))
+            ) + "\n" + TextFormatting.GRAY + t("misc.refinedstorage:storage.full", full));
         }
     }
 

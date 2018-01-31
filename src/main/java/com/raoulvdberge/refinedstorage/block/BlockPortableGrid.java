@@ -6,23 +6,24 @@ import com.raoulvdberge.refinedstorage.item.ItemBlockPortableGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.portable.TilePortableGrid;
 import net.minecraft.block.properties.PropertyBool;
 import net.minecraft.block.properties.PropertyEnum;
+import net.minecraft.block.state.BlockFaceShape;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.EnumHand;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.List;
 
 public class BlockPortableGrid extends BlockBase {
     private static final AxisAlignedBB PORTABLE_GRID_AABB = new AxisAlignedBB(0, 0, 0, 1, 13.2F / 16F, 1);
@@ -84,12 +85,8 @@ public class BlockPortableGrid extends BlockBase {
     }
 
     @Override
-    public List<ItemStack> getDrops(IBlockAccess world, BlockPos pos, IBlockState state, int fortune) {
-        List<ItemStack> drops = new ArrayList<>();
-
+    public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune) {
         drops.add(((TilePortableGrid) world.getTileEntity(pos)).getAsItem());
-
-        return drops;
     }
 
     @Override
@@ -125,9 +122,15 @@ public class BlockPortableGrid extends BlockBase {
         if (!world.isRemote) {
             player.openGui(RS.INSTANCE, RSGui.PORTABLE_GRID, world, pos.getX(), pos.getY(), pos.getZ());
 
-            ((TilePortableGrid) world.getTileEntity(pos)).onOpened(player);
+            ((TilePortableGrid) world.getTileEntity(pos)).onOpened((EntityPlayerMP) player);
         }
 
         return true;
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public BlockFaceShape getBlockFaceShape(IBlockAccess worldIn, IBlockState state, BlockPos pos, EnumFacing face) {
+        return BlockFaceShape.UNDEFINED;
     }
 }

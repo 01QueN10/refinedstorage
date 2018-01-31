@@ -4,9 +4,7 @@ import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.util.IStackList;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.util.List;
-import java.util.function.BiConsumer;
 
 /**
  * This holds all stacks from all the connected storages from a {@link INetwork}.
@@ -34,8 +32,9 @@ public interface IStorageCache<T> {
      * @param stack      the stack to add, do NOT modify
      * @param size       the size to add
      * @param rebuilding true if this method is called while rebuilding, false otherwise
+     * @param batched    true if this change needs to be batched
      */
-    void add(@Nonnull T stack, int size, boolean rebuilding);
+    void add(@Nonnull T stack, int size, boolean rebuilding, boolean batched);
 
     /**
      * Removes a stack from the cache.
@@ -43,17 +42,25 @@ public interface IStorageCache<T> {
      * Note that this doesn't modify any of the connected storages, but just modifies the cache.
      * Use {@link IStorage#extract(T, int, int, boolean)} to remove a stack from an actual storage.
      *
-     * @param stack the stack to remove, do NOT modify
-     * @param size  the size to remove
+     * @param stack   the stack to remove, do NOT modify
+     * @param size    the size to remove
+     * @param batched true if this change needs to be batched, false otherwise
      */
-    void remove(@Nonnull T stack, int size);
+    void remove(@Nonnull T stack, int size, boolean batched);
 
     /**
-     * Sets a listener to be called when this storage cache changes.
+     * Adds a listener to be called when this storage cache changes.
      *
-     * @param listener the listener, or null when no listener is needed
+     * @param listener the listener
      */
-    void setListener(@Nullable BiConsumer<T, Integer> listener);
+    void addListener(Runnable listener);
+
+    /**
+     * Removes a listener from the storage cache.
+     *
+     * @param listener the listener
+     */
+    void removeListener(Runnable listener);
 
     /**
      * Resorts the storages in this cache according to their priority.

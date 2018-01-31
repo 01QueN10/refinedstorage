@@ -1,11 +1,12 @@
 package com.raoulvdberge.refinedstorage.gui;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawer;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawers;
 import com.raoulvdberge.refinedstorage.gui.sidebutton.SideButton;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFluid;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
+import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.GlStateManager;
@@ -21,6 +22,7 @@ import net.minecraftforge.items.SlotItemHandler;
 import org.lwjgl.input.Mouse;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -30,7 +32,7 @@ import java.util.Map;
 public abstract class GuiBase extends GuiContainer {
     private static final Map<String, ResourceLocation> TEXTURE_CACHE = new HashMap<>();
 
-    public static final RSUtils.FluidRenderer FLUID_RENDERER = new RSUtils.FluidRenderer(-1, 16, 16);
+    public static final RenderUtils.FluidRenderer FLUID_RENDERER = new RenderUtils.FluidRenderer(-1, 16, 16);
 
     public class ElementDrawers implements IElementDrawers {
         private IElementDrawer<FluidStack> fluidDrawer = (x, y, element) -> FLUID_RENDERER.draw(GuiBase.this.mc, x, y, element);
@@ -48,6 +50,11 @@ public abstract class GuiBase extends GuiContainer {
         @Override
         public IElementDrawer<String> getStringDrawer() {
             return GuiBase.this::drawString;
+        }
+
+        @Override
+        public FontRenderer getFontRenderer() {
+            return fontRenderer;
         }
     }
 
@@ -106,7 +113,11 @@ public abstract class GuiBase extends GuiContainer {
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
 
-        super.drawScreen(mouseX, mouseY, partialTicks);
+        try {
+            super.drawScreen(mouseX, mouseY, partialTicks);
+        } catch (Exception e) {
+            // NO OP: Prevent a MC crash (see #1483)
+        }
 
         renderHoveredToolTip(mouseX, mouseY);
 
@@ -155,7 +166,9 @@ public abstract class GuiBase extends GuiContainer {
 
         String sideButtonTooltip = null;
 
-        for (GuiButton button : buttonList) {
+        for (int i = 0; i < buttonList.size(); ++i) {
+            GuiButton button = buttonList.get(i);
+
             if (button instanceof SideButton && ((SideButton) button).isHovered()) {
                 sideButtonTooltip = ((SideButton) button).getTooltip();
             }
@@ -188,10 +201,6 @@ public abstract class GuiBase extends GuiContainer {
         }
     }
 
-    public GuiButton addButton(int x, int y, int w, int h, String text) {
-        return addButton(x, y, w, h, text, true);
-    }
-
     public GuiCheckBox addCheckBox(int x, int y, String text, boolean checked) {
         GuiCheckBox checkBox = new GuiCheckBox(lastButtonId++, x, y, text, checked);
 
@@ -200,9 +209,14 @@ public abstract class GuiBase extends GuiContainer {
         return checkBox;
     }
 
-    public GuiButton addButton(int x, int y, int w, int h, String text, boolean enabled) {
+    public GuiButton addButton(int x, int y, int w, int h, String text) {
+        return addButton(x, y, w, h, text, true, true);
+    }
+
+    public GuiButton addButton(int x, int y, int w, int h, String text, boolean enabled, boolean visible) {
         GuiButton button = new GuiButton(lastButtonId++, x, y, w, h, text);
         button.enabled = enabled;
+        button.visible = visible;
 
         buttonList.add(button);
 
@@ -247,22 +261,30 @@ public abstract class GuiBase extends GuiContainer {
         drawItem(x, y, stack, withOverlay, null);
     }
 
-    public void drawItem(int x, int y, ItemStack stack, boolean withOverlay, String message) {
+    public void drawItem(int x, int y, ItemStack stack, boolean withOverlay, @Nullable String text) {
         zLevel = 200.0F;
         itemRender.zLevel = 200.0F;
 
-        itemRender.renderItemIntoGUI(stack, x, y);
+        try {
+            itemRender.renderItemIntoGUI(stack, x, y);
+        } catch (Throwable t) {
+            // NO OP
+        }
 
         if (withOverlay) {
-            drawItemOverlay(stack, message, x, y);
+            drawItemOverlay(stack, text, x, y);
         }
 
         zLevel = 0.0F;
         itemRender.zLevel = 0.0F;
     }
 
-    public void drawItemOverlay(ItemStack stack, String text, int x, int y) {
-        itemRender.renderItemOverlayIntoGUI(fontRenderer, stack, x, y, "");
+    public void drawItemOverlay(ItemStack stack, @Nullable String text, int x, int y) {
+        try {
+            itemRender.renderItemOverlayIntoGUI(fontRenderer, stack, x, y, "");
+        } catch (Throwable t) {
+            // NO OP
+        }
 
         if (text != null) {
             drawQuantity(x, y, text);
@@ -320,10 +342,6 @@ public abstract class GuiBase extends GuiContainer {
         GlStateManager.enableLighting();
     }
 
-    public void drawTooltip(int x, int y, List<String> lines) {
-        drawTooltip(ItemStack.EMPTY, x, y, lines);
-    }
-
     public void drawTexture(int x, int y, int textureX, int textureY, int width, int height) {
         drawTexturedModalRect(x, y, textureX, textureY, width, height);
     }
@@ -346,11 +364,5 @@ public abstract class GuiBase extends GuiContainer {
 
     public int getGuiTop() {
         return guiTop;
-    }
-
-    public static int calculateOffsetOnScale(int pos, float scale) {
-        float multiplier = (pos / scale);
-
-        return (int) multiplier;
     }
 }

@@ -2,12 +2,12 @@ package com.raoulvdberge.refinedstorage.apiimpl.storage;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.storage.AccessType;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDisk;
 import com.raoulvdberge.refinedstorage.api.storage.StorageDiskType;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -196,7 +196,7 @@ public class StorageDiskItem implements IStorageDisk<ItemStack> {
         Collection<ItemStack> toAttempt = null;
 
         if ((flags & IComparer.COMPARE_OREDICT) == IComparer.COMPARE_OREDICT) {
-            for (ItemStack ore : RSUtils.getEquivalentStacks(stack)) {
+            for (ItemStack ore : StackUtils.getEquivalentStacks(stack)) {
                 if (toAttempt == null) {
                     toAttempt = new ArrayList<>(stacks.get(ore.getItem()));
                 } else {
@@ -281,7 +281,7 @@ public class StorageDiskItem implements IStorageDisk<ItemStack> {
         return inserted;
     }
 
-    public static NBTTagCompound getShareTag(NBTTagCompound tag) {
+    public static NBTTagCompound getShareTag(@Nullable NBTTagCompound tag) {
         NBTTagCompound otherTag = new NBTTagCompound();
 
         otherTag.setInteger(NBT_STORED, getStored(tag));
@@ -291,8 +291,8 @@ public class StorageDiskItem implements IStorageDisk<ItemStack> {
         return otherTag;
     }
 
-    public static int getStored(NBTTagCompound tag) {
-        return tag.getInteger(NBT_STORED);
+    public static int getStored(@Nullable NBTTagCompound tag) {
+        return tag == null ? 0 : tag.getInteger(NBT_STORED);
     }
 
     public static NBTTagCompound getTag() {

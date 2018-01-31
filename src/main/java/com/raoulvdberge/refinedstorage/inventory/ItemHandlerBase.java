@@ -12,6 +12,8 @@ public class ItemHandlerBase extends ItemStackHandler {
     @Nullable
     private Consumer<Integer> listener;
 
+    private boolean empty = true;
+
     protected Predicate<ItemStack>[] validators;
 
     public ItemHandlerBase(int size, @Nullable Consumer<Integer> listener, Predicate<ItemStack>... validators) {
@@ -57,10 +59,11 @@ public class ItemHandlerBase extends ItemStackHandler {
         if (listener != null) {
             listener.accept(slot);
         }
+
+        this.empty = stacks.stream().allMatch(ItemStack::isEmpty);
     }
 
-    @Nonnull
-    public ItemStack extractItemInternal(int slot, int amount, boolean simulate) {
-        return super.extractItem(slot, amount, simulate);
+    public boolean isEmpty() {
+        return empty;
     }
 }

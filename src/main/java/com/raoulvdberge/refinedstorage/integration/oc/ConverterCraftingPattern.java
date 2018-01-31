@@ -1,4 +1,4 @@
-/*package com.raoulvdberge.refinedstorage.integration.oc;
+package com.raoulvdberge.refinedstorage.integration.oc;
 
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPattern;
 import li.cil.oc.api.driver.Converter;
@@ -13,8 +13,11 @@ public class ConverterCraftingPattern implements Converter {
 
             output.put("outputs", pattern.getOutputs());
             output.put("inputs", pattern.getInputs());
+            output.put("oreInputs", pattern.getOreInputs());
             output.put("byproducts", pattern.getByproducts());
+            output.put("processing", pattern.isProcessing());
+            output.put("blocking", pattern.isBlocking());
+            output.put("oredict", pattern.isOredict());
         }
     }
 }
-*/

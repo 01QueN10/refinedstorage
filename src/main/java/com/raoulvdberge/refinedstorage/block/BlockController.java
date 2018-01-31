@@ -5,7 +5,6 @@ import com.raoulvdberge.refinedstorage.RSGui;
 import com.raoulvdberge.refinedstorage.item.ItemBlockController;
 import com.raoulvdberge.refinedstorage.tile.TileController;
 import net.minecraft.block.properties.PropertyEnum;
-import net.minecraft.block.properties.PropertyInteger;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.creativetab.CreativeTabs;
@@ -22,13 +21,11 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 
-import java.util.ArrayList;
-import java.util.List;
+import javax.annotation.Nullable;
 
 public class BlockController extends BlockBase {
     public static final PropertyEnum TYPE = PropertyEnum.create("type", ControllerType.class);
-
-    private static final PropertyInteger ENERGY = PropertyInteger.create("energy", 0, 7);
+    public static final PropertyEnum ENERGY_TYPE = PropertyEnum.create("energy_type", ControllerEnergyType.class);
 
     public BlockController() {
         super("controller");
@@ -45,7 +42,7 @@ public class BlockController extends BlockBase {
     protected BlockStateContainer createBlockState() {
         return createBlockStateBuilder()
             .add(TYPE)
-            .add(ENERGY)
+            .add(ENERGY_TYPE)
             .build();
     }
 
@@ -62,7 +59,7 @@ public class BlockController extends BlockBase {
     @Override
     public IBlockState getActualState(IBlockState state, IBlockAccess world, BlockPos pos) {
         return super.getActualState(state, world, pos)
-            .withProperty(ENERGY, ((TileController) world.getTileEntity(pos)).getEnergyScaledForDisplay());
+            .withProperty(ENERGY_TYPE, ((TileController) world.getTileEntity(pos)).getEnergyType());
     }
 
     @Override
@@ -100,9 +97,7 @@ public class BlockController extends BlockBase {
     }
 
     @Override
-    public List<ItemStack> getDrops(IBlockAccess world, BlockPos pos, IBlockState state, int fortune) {
-        List<ItemStack> drops = new ArrayList<>();
-
+    public void getDrops(NonNullList<ItemStack> drops, IBlockAccess world, BlockPos pos, IBlockState state, int fortune) {
         ItemStack stack = new ItemStack(RSBlocks.CONTROLLER, 1, RSBlocks.CONTROLLER.getMetaFromState(state));
 
         stack.setTagCompound(new NBTTagCompound());
@@ -110,12 +105,16 @@ public class BlockController extends BlockBase {
         stack.getTagCompound().setInteger(TileController.NBT_ENERGY_CAPACITY, ((TileController) world.getTileEntity(pos)).getEnergy().getMaxEnergyStored());
 
         drops.add(stack);
-
-        return drops;
     }
 
     @Override
     public Item createItem() {
         return new ItemBlockController();
+    }
+
+    @Nullable
+    @Override
+    public Direction getDirection() {
+        return null;
     }
 }

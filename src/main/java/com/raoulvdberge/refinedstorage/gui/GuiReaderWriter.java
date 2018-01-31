@@ -7,6 +7,7 @@ import com.raoulvdberge.refinedstorage.gui.sidebutton.SideButtonRedstoneMode;
 import com.raoulvdberge.refinedstorage.network.MessageReaderWriterChannelAdd;
 import com.raoulvdberge.refinedstorage.network.MessageReaderWriterChannelRemove;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataManager;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiTextField;
 import net.minecraft.client.renderer.GlStateManager;
@@ -59,8 +60,10 @@ public class GuiReaderWriter extends GuiBase {
 
     @Override
     public void update(int x, int y) {
-        scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
-        scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        if (scrollbar != null) {
+            scrollbar.setEnabled(getRows() > VISIBLE_ROWS);
+            scrollbar.setMaxOffset(getRows() - VISIBLE_ROWS);
+        }
 
         if (itemSelected >= getChannels().size()) {
             itemSelected = -1;
@@ -95,7 +98,9 @@ public class GuiReaderWriter extends GuiBase {
         int x = 8;
         int y = 39;
 
-        int item = scrollbar.getOffset();
+        int item = scrollbar != null ? scrollbar.getOffset() : 0;
+
+        float scale = fontRenderer.getUnicodeFlag() ? 1F : 0.5F;
 
         for (int i = 0; i < VISIBLE_ROWS; ++i) {
             if (item < getChannels().size()) {
@@ -104,12 +109,10 @@ public class GuiReaderWriter extends GuiBase {
                     itemSelectedY = y;
                 }
 
-                float scale = 0.5f;
-
                 GlStateManager.pushMatrix();
                 GlStateManager.scale(scale, scale, 1);
 
-                drawString(calculateOffsetOnScale(x + 5, scale), calculateOffsetOnScale(y + 7, scale), getChannels().get(item));
+                drawString(RenderUtils.getOffsetOnScale(x + 5, scale), RenderUtils.getOffsetOnScale(y + 7, scale), getChannels().get(item));
 
                 GlStateManager.popMatrix();
 
@@ -128,7 +131,7 @@ public class GuiReaderWriter extends GuiBase {
 
         if (inBounds(8, 39, 144, 73, mouseX - guiLeft, mouseY - guiTop)) {
             if (mouseButton == 0) {
-                int item = scrollbar.getOffset();
+                int item = scrollbar != null ? scrollbar.getOffset() : 0;
 
                 for (int i = 0; i < VISIBLE_ROWS; ++i) {
                     int ix = 8;
@@ -192,6 +195,6 @@ public class GuiReaderWriter extends GuiBase {
     }
 
     private List<String> getChannels() {
-        return readerWriter.canUpdate() ? CHANNELS : Collections.emptyList();
+        return readerWriter.isActive() ? CHANNELS : Collections.emptyList();
     }
 }

@@ -1,13 +1,15 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.network.INetworkNodeVisitor;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.util.IWrenchable;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
+import com.raoulvdberge.refinedstorage.integration.mcmp.IntegrationMCMP;
+import com.raoulvdberge.refinedstorage.integration.mcmp.RSMCMPAddon;
 import com.raoulvdberge.refinedstorage.tile.TileBase;
 import com.raoulvdberge.refinedstorage.tile.config.RedstoneMode;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
@@ -20,17 +22,23 @@ import net.minecraftforge.items.IItemHandler;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.util.UUID;
 
 public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, IWrenchable {
+    private static final String NBT_OWNER = "Owner";
+
     @Nullable
     protected INetwork network;
     protected World world;
     protected BlockPos pos;
     protected int ticks;
     protected RedstoneMode redstoneMode = RedstoneMode.IGNORE;
+    @Nullable
+    protected UUID owner;
 
     private EnumFacing direction;
 
+    private boolean throttlingDisabled;
     private boolean couldUpdate;
     private int ticksSinceUpdateChanged;
 
@@ -97,6 +105,10 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
         return 4;
     }
 
+    public void setThrottlingDisabled() {
+        throttlingDisabled = true;
+    }
+
     @Override
     public void update() {
         ++ticks;
@@ -106,12 +118,13 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
         if (couldUpdate != canUpdate) {
             ++ticksSinceUpdateChanged;
 
-            if (canUpdate ? (ticksSinceUpdateChanged > getUpdateThrottleInactiveToActive()) : (ticksSinceUpdateChanged > getUpdateThrottleActiveToInactive())) {
+            if ((canUpdate ? (ticksSinceUpdateChanged > getUpdateThrottleInactiveToActive()) : (ticksSinceUpdateChanged > getUpdateThrottleActiveToInactive())) || throttlingDisabled) {
                 ticksSinceUpdateChanged = 0;
                 couldUpdate = canUpdate;
+                throttlingDisabled = false;
 
                 if (hasConnectivityState()) {
-                    RSUtils.updateBlock(world, pos);
+                    WorldUtils.updateBlock(world, pos);
                 }
 
                 if (network != null) {
@@ -129,6 +142,10 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
 
     @Override
     public NBTTagCompound write(NBTTagCompound tag) {
+        if (owner != null) {
+            tag.setString(NBT_OWNER, owner.toString()); // @todo: Use proper NBT UUID methods
+        }
+
         writeConfiguration(tag);
 
         return tag;
@@ -142,6 +159,10 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
     }
 
     public void read(NBTTagCompound tag) {
+        if (tag.hasKey(NBT_OWNER)) {
+            owner = UUID.fromString(tag.getString(NBT_OWNER)); // @todo: Use proper NBT UUID methods
+        }
+
         readConfiguration(tag);
     }
 
@@ -179,6 +200,7 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
         }
     }
 
+    @Nullable
     public TileEntity getFacingTile() {
         return world.getTileEntity(pos.offset(getDirection()));
     }
@@ -191,8 +213,9 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
         return direction;
     }
 
+    // @todo: Move this data to the network node.
     public void resetDirection() {
-        this.direction = ((TileBase) world.getTileEntity(pos)).getDirection();
+        this.direction = ((TileBase) (IntegrationMCMP.isLoaded() ? RSMCMPAddon.unwrapTile(world, pos) : world.getTileEntity(pos))).getDirection();
     }
 
     @Nullable
@@ -214,6 +237,17 @@ public abstract class NetworkNode implements INetworkNode, INetworkNodeVisitor, 
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public void setOwner(@Nullable UUID owner) {
+        this.owner = owner;
+
+        markDirty();
+    }
+
+    @Nullable
+    public UUID getOwner() {
+        return owner;
     }
 
     @Override

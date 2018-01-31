@@ -1,11 +1,12 @@
 package com.raoulvdberge.refinedstorage.tile;
 
+import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeManager;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.api.util.IWrenchable;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
-import com.raoulvdberge.refinedstorage.proxy.CapabilityNetworkNodeProxy;
+import com.raoulvdberge.refinedstorage.capability.CapabilityNetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.tile.config.IRedstoneConfigurable;
 import com.raoulvdberge.refinedstorage.tile.config.RedstoneMode;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
@@ -20,13 +21,11 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 public abstract class TileNode<N extends NetworkNode> extends TileBase implements INetworkNodeProxy<N>, IRedstoneConfigurable, IWrenchable {
-    public static final TileDataParameter<Integer> REDSTONE_MODE = RedstoneMode.createParameter();
-
-    private NBTTagCompound legacyTag;
-
-    private N clientNode;
+    public static final TileDataParameter<Integer, TileNode> REDSTONE_MODE = RedstoneMode.createParameter();
 
     protected static final String NBT_ACTIVE = "Active";
+
+    private N clientNode;
 
     public TileNode() {
         dataManager.addWatchedParameter(REDSTONE_MODE);
@@ -58,13 +57,6 @@ public abstract class TileNode<N extends NetworkNode> extends TileBase implement
     public void readConfiguration(NBTTagCompound tag) {
         getNode().readConfiguration(tag);
         getNode().markDirty();
-    }
-
-    @Override
-    public void read(NBTTagCompound tag) {
-        super.read(tag);
-
-        this.legacyTag = tag;
     }
 
     public NBTTagCompound writeUpdate(NBTTagCompound tag) {
@@ -101,44 +93,19 @@ public abstract class TileNode<N extends NetworkNode> extends TileBase implement
 
         INetworkNodeManager manager = API.instance().getNetworkNodeManager(world);
 
-        NetworkNode node = (NetworkNode) manager.getNode(pos);
-        
-        if (node == null) {
+        INetworkNode node = manager.getNode(pos);
+
+        if (node == null || !node.getId().equals(getNodeId())) {
             manager.setNode(pos, node = createNode(world, pos));
             manager.markForSaving();
-        }
-
-        if (legacyTag != null) {
-            doLegacyCheck(node);
         }
 
         return (N) node;
     }
 
-    private void doLegacyCheck(NetworkNode node) {
-        // Ugly code for checking if this is a legacy tile. Sue me.
-        boolean hasMeta = legacyTag.hasKey("x") && legacyTag.hasKey("y") && legacyTag.hasKey("z") && legacyTag.hasKey("id");
-        boolean hasForgeData = legacyTag.hasKey("ForgeData");
-        boolean hasForgeCaps = legacyTag.hasKey("ForgeCaps");
-
-        // + 1 because of "Direction".
-        if (legacyTag.getSize() == 4 + 1 && hasMeta) {
-            // NO OP
-        } else if (legacyTag.getSize() == 5 + 1 && hasMeta && (hasForgeData || hasForgeCaps)) {
-            // NO OP
-        } else if (legacyTag.getSize() == 6 + 1 && hasMeta && hasForgeData && hasForgeCaps) {
-            // NO OP
-        } else {
-            node.read(legacyTag);
-            node.markDirty();
-
-            markDirty();
-        }
-
-        this.legacyTag = null;
-    }
-
     public abstract N createNode(World world, BlockPos pos);
+
+    public abstract String getNodeId();
 
     @Override
     public boolean hasCapability(@Nonnull Capability<?> capability, @Nullable EnumFacing side) {

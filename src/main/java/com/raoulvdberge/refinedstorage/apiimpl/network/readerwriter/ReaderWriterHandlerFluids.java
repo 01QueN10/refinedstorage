@@ -1,10 +1,10 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.readerwriter;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.readerwriter.IReader;
 import com.raoulvdberge.refinedstorage.api.network.readerwriter.IReaderWriterChannel;
 import com.raoulvdberge.refinedstorage.api.network.readerwriter.IReaderWriterHandler;
 import com.raoulvdberge.refinedstorage.api.network.readerwriter.IWriter;
+import com.raoulvdberge.refinedstorage.apiimpl.API;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
@@ -26,7 +26,7 @@ public class ReaderWriterHandlerFluids implements IReaderWriterHandler {
     private FluidTankReaderWriter tankReader, tankWriter;
 
     public ReaderWriterHandlerFluids(@Nullable NBTTagCompound tag) {
-        this.tank = new FluidTank(4 * Fluid.BUCKET_VOLUME);
+        this.tank = new FluidTank(16 * Fluid.BUCKET_VOLUME);
         this.tankReader = new FluidTankReaderWriter(tank, true, false);
         this.tankWriter = new FluidTankReaderWriter(tank, false, true);
 
@@ -102,7 +102,7 @@ public class ReaderWriterHandlerFluids implements IReaderWriterHandler {
             return Collections.emptyList();
         }
 
-        return Collections.singletonList(new TextComponentString(RSUtils.QUANTITY_FORMATTER.format((float) stack.amount / 1000F) + "x ").appendSibling(new TextComponentTranslation(stack.getUnlocalizedName())));
+        return Collections.singletonList(new TextComponentString(API.instance().getQuantityFormatter().format(stack.amount) + " mB ").appendSibling(new TextComponentTranslation(stack.getUnlocalizedName())));
     }
 
     private class FluidTankReaderWriter implements IFluidTank, IFluidHandler {

@@ -2,7 +2,7 @@ package com.raoulvdberge.refinedstorage.apiimpl.autocrafting.craftingmonitor;
 
 import com.raoulvdberge.refinedstorage.api.autocrafting.craftingmonitor.ICraftingMonitorElement;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawers;
-import com.raoulvdberge.refinedstorage.gui.GuiBase;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.resources.I18n;
@@ -32,12 +32,12 @@ public class CraftingMonitorElementText implements ICraftingMonitorElement {
     @Override
     @SideOnly(Side.CLIENT)
     public void draw(int x, int y, IElementDrawers drawers) {
-        float scale = 0.5f;
+        float scale = drawers.getFontRenderer().getUnicodeFlag() ? 1F : 0.5F;
 
         GlStateManager.pushMatrix();
         GlStateManager.scale(scale, scale, 1);
 
-        drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + offset, scale), GuiBase.calculateOffsetOnScale(y + 7, scale), I18n.format(text));
+        drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + offset, scale), RenderUtils.getOffsetOnScale(y + 7, scale), I18n.format(text));
 
         GlStateManager.popMatrix();
     }

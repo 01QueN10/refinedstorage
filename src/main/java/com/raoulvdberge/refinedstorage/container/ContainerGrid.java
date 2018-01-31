@@ -1,15 +1,15 @@
 package com.raoulvdberge.refinedstorage.container;
 
 import com.raoulvdberge.refinedstorage.RSItems;
-import com.raoulvdberge.refinedstorage.api.network.grid.IFluidGridHandler;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IFluidGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDiskProvider;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNodeGrid;
-import com.raoulvdberge.refinedstorage.block.GridType;
 import com.raoulvdberge.refinedstorage.container.slot.*;
 import com.raoulvdberge.refinedstorage.gui.grid.IGridDisplay;
 import com.raoulvdberge.refinedstorage.tile.TileBase;
-import com.raoulvdberge.refinedstorage.tile.grid.IGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.WirelessGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.portable.IPortableGrid;
 import com.raoulvdberge.refinedstorage.tile.grid.portable.PortableGrid;
@@ -60,8 +60,8 @@ public class ContainerGrid extends ContainerBase {
         }
 
         if (grid.getType() == GridType.PATTERN) {
-            addSlotToContainer(new SlotItemHandler(((NetworkNodeGrid) grid).getPatterns(), 0, 152, headerAndSlots + 4));
-            addSlotToContainer(new SlotOutput(((NetworkNodeGrid) grid).getPatterns(), 1, 152, headerAndSlots + 40));
+            addSlotToContainer(new SlotItemHandler(((NetworkNodeGrid) grid).getPatterns(), 0, 172, headerAndSlots + 4));
+            addSlotToContainer(new SlotItemHandler(((NetworkNodeGrid) grid).getPatterns(), 1, 172, headerAndSlots + 40));
         }
 
         if (grid instanceof IPortableGrid) {
@@ -87,21 +87,44 @@ public class ContainerGrid extends ContainerBase {
 
             addSlotToContainer(craftingResultSlot = new SlotGridCraftingResult(this, getPlayer(), grid, 0, 130 + 4, headerAndSlots + 22));
         } else if (grid.getType() == GridType.PATTERN) {
-            int x = 8;
-            int y = headerAndSlots + 4;
+            if (((NetworkNodeGrid) grid).isProcessingPattern()) {
+                int ox = 8;
+                int x = ox;
+                int y = headerAndSlots + 4;
 
-            for (int i = 0; i < 9; ++i) {
-                addSlotToContainer(new SlotFilterLegacy(grid.getCraftingMatrix(), i, x, y));
+                for (int i = 0; i < 9 * 2; ++i) {
+                    addSlotToContainer(new SlotFilter(((NetworkNodeGrid) grid).getProcessingMatrix(), i, x, y, SlotFilter.FILTER_ALLOW_SIZE));
 
-                x += 18;
+                    x += 18;
 
-                if ((i + 1) % 3 == 0) {
-                    y += 18;
-                    x = 8;
+                    if ((i + 1) % 3 == 0) {
+                        if (i == 8) {
+                            ox = 98;
+                            x = ox;
+                            y = headerAndSlots + 4;
+                        } else {
+                            x = ox;
+                            y += 18;
+                        }
+                    }
                 }
-            }
+            } else {
+                int x = 26;
+                int y = headerAndSlots + 4;
 
-            addSlotToContainer(patternResultSlot = new SlotDisabled(grid.getCraftingResult(), 0, 112 + 4, headerAndSlots + 22));
+                for (int i = 0; i < 9; ++i) {
+                    addSlotToContainer(new SlotFilterLegacy(grid.getCraftingMatrix(), i, x, y));
+
+                    x += 18;
+
+                    if ((i + 1) % 3 == 0) {
+                        y += 18;
+                        x = 26;
+                    }
+                }
+
+                addSlotToContainer(patternResultSlot = new SlotDisabled(grid.getCraftingResult(), 0, 134, headerAndSlots + 22));
+            }
         }
     }
 
@@ -121,6 +144,16 @@ public class ContainerGrid extends ContainerBase {
                 for (IContainerListener listener : listeners) {
                     listener.sendSlotContents(this, i, slot.getStack());
                 }
+            }
+        }
+    }
+
+    public void sendAllSlots() {
+        for (int i = 0; i < inventorySlots.size(); ++i) {
+            Slot slot = inventorySlots.get(i);
+
+            for (IContainerListener listener : listeners) {
+                listener.sendSlotContents(this, i, slot.getStack());
             }
         }
     }

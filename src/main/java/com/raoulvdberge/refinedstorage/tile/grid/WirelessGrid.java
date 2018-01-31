@@ -1,17 +1,16 @@
 package com.raoulvdberge.refinedstorage.tile.grid;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
-import com.raoulvdberge.refinedstorage.block.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGridTab;
+import com.raoulvdberge.refinedstorage.api.util.IFilter;
 import com.raoulvdberge.refinedstorage.gui.grid.GuiGrid;
-import com.raoulvdberge.refinedstorage.inventory.ItemHandlerBase;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFilter;
 import com.raoulvdberge.refinedstorage.item.ItemWirelessGrid;
-import com.raoulvdberge.refinedstorage.item.filter.Filter;
-import com.raoulvdberge.refinedstorage.item.filter.FilterTab;
 import com.raoulvdberge.refinedstorage.network.MessageGridSettingsUpdate;
-import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.InventoryCraftResult;
@@ -22,28 +21,30 @@ import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.DimensionManager;
+import net.minecraftforge.items.IItemHandlerModifiable;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
 public class WirelessGrid implements IGrid {
-    public static final int GRID_TYPE = 0;
+    public static int ID;
 
     private ItemStack stack;
 
-    private int controllerDimension;
-    private BlockPos controller;
+    private int networkDimension;
+    private BlockPos network;
 
     private int viewType;
     private int sortingType;
     private int sortingDirection;
     private int searchBoxMode;
     private int tabSelected;
+    private int tabPage;
     private int size;
 
-    private List<Filter> filters = new ArrayList<>();
-    private List<FilterTab> tabs = new ArrayList<>();
+    private List<IFilter> filters = new ArrayList<>();
+    private List<IGridTab> tabs = new ArrayList<>();
     private ItemHandlerFilter filter = new ItemHandlerFilter(filters, tabs, null) {
         @Override
         protected void onContentsChanged(int slot) {
@@ -53,13 +54,13 @@ public class WirelessGrid implements IGrid {
                 stack.setTagCompound(new NBTTagCompound());
             }
 
-            RSUtils.writeItems(this, 0, stack.getTagCompound());
+            StackUtils.writeItems(this, 0, stack.getTagCompound());
         }
     };
 
-    public WirelessGrid(int controllerDimension, ItemStack stack) {
-        this.controllerDimension = controllerDimension;
-        this.controller = new BlockPos(ItemWirelessGrid.getX(stack), ItemWirelessGrid.getY(stack), ItemWirelessGrid.getZ(stack));
+    public WirelessGrid(int networkDimension, ItemStack stack) {
+        this.networkDimension = networkDimension;
+        this.network = new BlockPos(ItemWirelessGrid.getX(stack), ItemWirelessGrid.getY(stack), ItemWirelessGrid.getZ(stack));
 
         this.stack = stack;
 
@@ -68,10 +69,11 @@ public class WirelessGrid implements IGrid {
         this.sortingDirection = ItemWirelessGrid.getSortingDirection(stack);
         this.searchBoxMode = ItemWirelessGrid.getSearchBoxMode(stack);
         this.tabSelected = ItemWirelessGrid.getTabSelected(stack);
+        this.tabPage = ItemWirelessGrid.getTabPage(stack);
         this.size = ItemWirelessGrid.getSize(stack);
 
         if (stack.hasTagCompound()) {
-            RSUtils.readItems(filter, 0, stack.getTagCompound());
+            StackUtils.readItems(filter, 0, stack.getTagCompound());
         }
     }
 
@@ -87,10 +89,10 @@ public class WirelessGrid implements IGrid {
     @Override
     @Nullable
     public INetwork getNetwork() {
-        World world = DimensionManager.getWorld(controllerDimension);
+        World world = DimensionManager.getWorld(networkDimension);
 
         if (world != null) {
-            TileEntity tile = world.getTileEntity(controller);
+            TileEntity tile = world.getTileEntity(network);
 
             return tile instanceof INetwork ? (INetwork) tile : null;
         }
@@ -100,7 +102,7 @@ public class WirelessGrid implements IGrid {
 
     @Override
     public String getGuiTitle() {
-        return "gui.refinedstorage:wireless_grid";
+        return "gui.refinedstorage:grid";
     }
 
     @Override
@@ -129,47 +131,57 @@ public class WirelessGrid implements IGrid {
     }
 
     @Override
+    public int getTabPage() {
+        return Math.min(tabPage, getTotalTabPages());
+    }
+
+    @Override
+    public int getTotalTabPages() {
+        return (int) Math.floor((float) Math.max(0, tabs.size() - 1) / (float) IGrid.TABS_PER_PAGE);
+    }
+
+    @Override
     public int getSize() {
         return size;
     }
 
     @Override
     public void onViewTypeChanged(int type) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(type, getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(type, getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), getTabSelected(), getTabPage()));
 
         this.viewType = type;
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
     public void onSortingTypeChanged(int type) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), type, getSearchBoxMode(), getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), type, getSearchBoxMode(), getSize(), getTabSelected(), getTabPage()));
 
         this.sortingType = type;
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
     public void onSortingDirectionChanged(int direction) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), direction, getSortingType(), getSearchBoxMode(), getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), direction, getSortingType(), getSearchBoxMode(), getSize(), getTabSelected(), getTabPage()));
 
         this.sortingDirection = direction;
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
     public void onSearchBoxModeChanged(int searchBoxMode) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), searchBoxMode, getSize(), getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), searchBoxMode, getSize(), getTabSelected(), getTabPage()));
 
         this.searchBoxMode = searchBoxMode;
     }
 
     @Override
     public void onSizeChanged(int size) {
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), size, getTabSelected()));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), size, getTabSelected(), getTabPage()));
 
         this.size = size;
 
@@ -182,29 +194,33 @@ public class WirelessGrid implements IGrid {
     public void onTabSelectionChanged(int tab) {
         this.tabSelected = tab == tabSelected ? -1 : tab;
 
-        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), tabSelected));
+        RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), tabSelected, getTabPage()));
 
-        GuiGrid.markForSorting();
+        GuiGrid.scheduleSort();
     }
 
     @Override
-    public List<Filter> getFilters() {
+    public void onTabPageChanged(int page) {
+        if (page >= 0 && page <= getTotalTabPages()) {
+            RS.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(getViewType(), getSortingDirection(), getSortingType(), getSearchBoxMode(), getSize(), getTabSelected(), page));
+
+            this.tabPage = page;
+        }
+    }
+
+    @Override
+    public List<IFilter> getFilters() {
         return filters;
     }
 
     @Override
-    public List<FilterTab> getTabs() {
+    public List<IGridTab> getTabs() {
         return tabs;
     }
 
     @Override
-    public ItemHandlerBase getFilter() {
+    public IItemHandlerModifiable getFilter() {
         return filter;
-    }
-
-    @Override
-    public TileDataParameter<Integer> getRedstoneModeConfig() {
-        return null;
     }
 
     @Override

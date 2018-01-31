@@ -1,16 +1,16 @@
 package com.raoulvdberge.refinedstorage.block;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.api.network.security.Permission;
+import com.raoulvdberge.refinedstorage.capability.CapabilityNetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.container.ContainerBase;
 import com.raoulvdberge.refinedstorage.integration.mcmp.IntegrationMCMP;
 import com.raoulvdberge.refinedstorage.integration.mcmp.RSMCMPAddon;
 import com.raoulvdberge.refinedstorage.item.ItemBlockBase;
-import com.raoulvdberge.refinedstorage.proxy.CapabilityNetworkNodeProxy;
 import com.raoulvdberge.refinedstorage.tile.TileBase;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.BlockStateContainer;
@@ -38,13 +38,21 @@ public abstract class BlockBase extends Block {
         this.name = name;
 
         setHardness(1.9F);
-        setRegistryName(RS.ID, name);
+        setRegistryName(getDomain(), name);
         setCreativeTab(RS.INSTANCE.tab);
+    }
+
+    protected String getDomain() {
+        return RS.ID;
+    }
+
+    protected Object getModObject() {
+        return RS.INSTANCE;
     }
 
     @Override
     public String getUnlocalizedName() {
-        return "block." + RS.ID + ":" + name;
+        return "block." + getDomain() + ":" + name;
     }
 
     protected BlockStateContainer.Builder createBlockStateBuilder() {
@@ -103,7 +111,7 @@ public abstract class BlockBase extends Block {
 
             tile.setDirection(getDirection().cycle(tile.getDirection()));
 
-            RSUtils.updateBlock(world, pos);
+            WorldUtils.updateBlock(world, pos);
 
             return true;
         }
@@ -169,7 +177,7 @@ public abstract class BlockBase extends Block {
             if (node.getNetwork() != null) {
                 for (Permission permission : permissions) {
                     if (!node.getNetwork().getSecurityManager().hasPermission(permission, player)) {
-                        RSUtils.sendNoPermissionMessage(player);
+                        WorldUtils.sendNoPermissionMessage(player);
 
                         return false;
                     }
@@ -177,7 +185,7 @@ public abstract class BlockBase extends Block {
             }
         }
 
-        player.openGui(RS.INSTANCE, guiId, world, pos.getX(), pos.getY(), pos.getZ());
+        player.openGui(getModObject(), guiId, world, pos.getX(), pos.getY(), pos.getZ());
 
         return true;
     }

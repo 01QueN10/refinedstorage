@@ -2,6 +2,7 @@ package com.raoulvdberge.refinedstorage.item;
 
 import com.raoulvdberge.refinedstorage.RSBlocks;
 import com.raoulvdberge.refinedstorage.RSItems;
+import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNodeStorage;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageDiskItem;
 import com.raoulvdberge.refinedstorage.block.ItemStorageType;
@@ -35,9 +36,9 @@ public class ItemBlockStorage extends ItemBlockBase {
             NBTTagCompound tag = stack.getTagCompound().getCompoundTag(NetworkNodeStorage.NBT_STORAGE);
 
             if (type == ItemStorageType.TYPE_CREATIVE) {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", StorageDiskItem.getStored(tag)));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", API.instance().getQuantityFormatter().format(StorageDiskItem.getStored(tag))));
             } else {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", StorageDiskItem.getStored(tag), type.getCapacity()));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", API.instance().getQuantityFormatter().format(StorageDiskItem.getStored(tag)), API.instance().getQuantityFormatter().format(type.getCapacity())));
             }
         }
     }

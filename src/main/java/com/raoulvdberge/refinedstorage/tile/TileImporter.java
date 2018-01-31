@@ -11,9 +11,9 @@ import net.minecraft.world.World;
 import javax.annotation.Nonnull;
 
 public class TileImporter extends TileNode<NetworkNodeImporter> {
-    public static final TileDataParameter<Integer> COMPARE = IComparable.createParameter();
-    public static final TileDataParameter<Integer> MODE = IFilterable.createParameter();
-    public static final TileDataParameter<Integer> TYPE = IType.createParameter();
+    public static final TileDataParameter<Integer, TileImporter> COMPARE = IComparable.createParameter();
+    public static final TileDataParameter<Integer, TileImporter> MODE = IFilterable.createParameter();
+    public static final TileDataParameter<Integer, TileImporter> TYPE = IType.createParameter();
 
     public TileImporter() {
         dataManager.addWatchedParameter(COMPARE);
@@ -25,5 +25,10 @@ public class TileImporter extends TileNode<NetworkNodeImporter> {
     @Nonnull
     public NetworkNodeImporter createNode(World world, BlockPos pos) {
         return new NetworkNodeImporter(world, pos);
+    }
+
+    @Override
+    public String getNodeId() {
+        return NetworkNodeImporter.ID;
     }
 }

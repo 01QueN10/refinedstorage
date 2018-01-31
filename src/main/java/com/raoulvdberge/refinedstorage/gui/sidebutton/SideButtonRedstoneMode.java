@@ -6,9 +6,9 @@ import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
 import net.minecraft.util.text.TextFormatting;
 
 public class SideButtonRedstoneMode extends SideButton {
-    private TileDataParameter<Integer> parameter;
+    private TileDataParameter<Integer, ?> parameter;
 
-    public SideButtonRedstoneMode(GuiBase gui, TileDataParameter<Integer> parameter) {
+    public SideButtonRedstoneMode(GuiBase gui, TileDataParameter<Integer, ?> parameter) {
         super(gui);
 
         this.parameter = parameter;
@@ -16,7 +16,7 @@ public class SideButtonRedstoneMode extends SideButton {
 
     @Override
     public String getTooltip() {
-        return TextFormatting.RED + GuiBase.t("sidebutton.refinedstorage:redstone_mode") + TextFormatting.RESET + "\n" + GuiBase.t("sidebutton.refinedstorage:redstone_mode." + parameter.getValue());
+        return GuiBase.t("sidebutton.refinedstorage:redstone_mode") + "\n" + TextFormatting.GRAY + GuiBase.t("sidebutton.refinedstorage:redstone_mode." + parameter.getValue());
     }
 
     @Override

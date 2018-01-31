@@ -13,12 +13,12 @@ import net.minecraft.world.World;
 import javax.annotation.Nullable;
 
 public class TileStorageMonitor extends TileNode<NetworkNodeStorageMonitor> {
+    public static final TileDataParameter<Integer, TileStorageMonitor> COMPARE = IComparable.createParameter();
+    public static final TileDataParameter<Integer, TileStorageMonitor> TYPE = IType.createParameter();
+
     private static final String NBT_TYPE = "Type";
     private static final String NBT_STACK = "Stack";
     private static final String NBT_AMOUNT = "Amount";
-
-    public static final TileDataParameter<Integer> COMPARE = IComparable.createParameter();
-    public static final TileDataParameter<Integer> TYPE = IType.createParameter();
 
     private int type;
     private int amount;
@@ -33,6 +33,11 @@ public class TileStorageMonitor extends TileNode<NetworkNodeStorageMonitor> {
     @Override
     public NetworkNodeStorageMonitor createNode(World world, BlockPos pos) {
         return new NetworkNodeStorageMonitor(world, pos);
+    }
+
+    @Override
+    public String getNodeId() {
+        return NetworkNodeStorageMonitor.ID;
     }
 
     @Override

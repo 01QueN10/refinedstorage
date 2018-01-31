@@ -1,18 +1,22 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node.diskdrive;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
 import com.raoulvdberge.refinedstorage.api.storage.*;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.IGuiStorage;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheFluid;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheItem;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerBase;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFluid;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerListenerNetworkNode;
 import com.raoulvdberge.refinedstorage.tile.TileDiskDrive;
 import com.raoulvdberge.refinedstorage.tile.config.*;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
+import com.raoulvdberge.refinedstorage.util.AccessTypeUtils;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.math.BlockPos;
@@ -42,7 +46,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
             super.onContentsChanged(slot);
 
             if (FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER) {
-                RSUtils.createStorages(
+                StackUtils.createStorages(
                     getStackInSlot(slot),
                     slot,
                     itemStorages,
@@ -56,7 +60,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
                     network.getFluidStorageCache().invalidate();
                 }
 
-                RSUtils.updateBlock(world, pos);
+                WorldUtils.updateBlock(world, pos);
             }
         }
 
@@ -103,8 +107,13 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     public int getEnergyUsage() {
         int usage = RS.INSTANCE.config.diskDriveUsage;
 
-        for (int i = 0; i < disks.getSlots(); ++i) {
-            if (!disks.getStackInSlot(i).isEmpty()) {
+        for (IStorage storage : itemStorages) {
+            if (storage != null) {
+                usage += RS.INSTANCE.config.diskDrivePerDiskUsage;
+            }
+        }
+        for (IStorage storage : fluidStorages) {
+            if (storage != null) {
                 usage += RS.INSTANCE.config.diskDrivePerDiskUsage;
             }
         }
@@ -130,10 +139,10 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     public void onConnectedStateChange(INetwork network, boolean state) {
         super.onConnectedStateChange(network, state);
 
-        network.getItemStorageCache().invalidate();
-        network.getFluidStorageCache().invalidate();
+        network.getNodeGraph().schedulePostRebuildAction(StorageCacheItem.INVALIDATE);
+        network.getNodeGraph().schedulePostRebuildAction(StorageCacheFluid.INVALIDATE);
 
-        RSUtils.updateBlock(world, pos);
+        WorldUtils.updateBlock(world, pos);
     }
 
     @Override
@@ -158,7 +167,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     public void read(NBTTagCompound tag) {
         super.read(tag);
 
-        RSUtils.readItems(disks, 0, tag);
+        StackUtils.readItems(disks, 0, tag);
     }
 
     @Override
@@ -180,7 +189,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
             }
         }
 
-        RSUtils.writeItems(disks, 0, tag);
+        StackUtils.writeItems(disks, 0, tag);
 
         return tag;
     }
@@ -189,8 +198,8 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     public NBTTagCompound writeConfiguration(NBTTagCompound tag) {
         super.writeConfiguration(tag);
 
-        RSUtils.writeItems(itemFilters, 1, tag);
-        RSUtils.writeItems(fluidFilters, 2, tag);
+        StackUtils.writeItems(itemFilters, 1, tag);
+        StackUtils.writeItems(fluidFilters, 2, tag);
 
         tag.setInteger(NBT_PRIORITY, priority);
         tag.setInteger(NBT_COMPARE, compare);
@@ -198,7 +207,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
         tag.setInteger(NBT_TYPE, type);
         tag.setBoolean(NBT_VOID_EXCESS, voidExcess);
 
-        RSUtils.writeAccessType(tag, accessType);
+        AccessTypeUtils.writeAccessType(tag, accessType);
 
         return tag;
     }
@@ -207,8 +216,8 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     public void readConfiguration(NBTTagCompound tag) {
         super.readConfiguration(tag);
 
-        RSUtils.readItems(itemFilters, 1, tag);
-        RSUtils.readItems(fluidFilters, 2, tag);
+        StackUtils.readItems(itemFilters, 1, tag);
+        StackUtils.readItems(fluidFilters, 2, tag);
 
         if (tag.hasKey(NBT_PRIORITY)) {
             priority = tag.getInteger(NBT_PRIORITY);
@@ -230,7 +239,7 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
             voidExcess = tag.getBoolean(NBT_VOID_EXCESS);
         }
 
-        accessType = RSUtils.readAccessType(tag);
+        accessType = AccessTypeUtils.readAccessType(tag);
     }
 
     @Override
@@ -263,37 +272,37 @@ public class NetworkNodeDiskDrive extends NetworkNode implements IGuiStorage, IS
     }
 
     @Override
-    public TileDataParameter<Integer> getTypeParameter() {
+    public TileDataParameter<Integer, ?> getTypeParameter() {
         return TileDiskDrive.TYPE;
     }
 
     @Override
-    public TileDataParameter<Integer> getRedstoneModeParameter() {
+    public TileDataParameter<Integer, ?> getRedstoneModeParameter() {
         return TileDiskDrive.REDSTONE_MODE;
     }
 
     @Override
-    public TileDataParameter<Integer> getCompareParameter() {
+    public TileDataParameter<Integer, ?> getCompareParameter() {
         return TileDiskDrive.COMPARE;
     }
 
     @Override
-    public TileDataParameter<Integer> getFilterParameter() {
+    public TileDataParameter<Integer, ?> getFilterParameter() {
         return TileDiskDrive.MODE;
     }
 
     @Override
-    public TileDataParameter<Integer> getPriorityParameter() {
+    public TileDataParameter<Integer, ?> getPriorityParameter() {
         return TileDiskDrive.PRIORITY;
     }
 
     @Override
-    public TileDataParameter<Boolean> getVoidExcessParameter() {
+    public TileDataParameter<Boolean, ?> getVoidExcessParameter() {
         return TileDiskDrive.VOID_EXCESS;
     }
 
     @Override
-    public TileDataParameter<AccessType> getAccessTypeParameter() {
+    public TileDataParameter<AccessType, ?> getAccessTypeParameter() {
         return TileDiskDrive.ACCESS_TYPE;
     }
 

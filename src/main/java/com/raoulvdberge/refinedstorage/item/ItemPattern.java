@@ -1,13 +1,13 @@
 package com.raoulvdberge.refinedstorage.item;
 
 import com.raoulvdberge.refinedstorage.RSItems;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPattern;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPatternContainer;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPatternProvider;
 import com.raoulvdberge.refinedstorage.api.util.IStackList;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.CraftingPattern;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.client.util.ITooltipFlag;
@@ -28,10 +28,6 @@ import javax.annotation.Nullable;
 import java.util.*;
 
 public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
-    /**
-     * A cache that maps a stack to a crafting pattern.
-     * Only used client side for rendering and tooltips, to avoid crafting pattern allocations and crafting pattern output calculation (which is expensive).
-     */
     private static Map<ItemStack, CraftingPattern> PATTERN_CACHE = new HashMap<>();
 
     private static final String NBT_SLOT = "Slot_%d";
@@ -65,12 +61,12 @@ public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
             if (GuiScreen.isShiftKeyDown() || isProcessing(stack)) {
                 tooltip.add(TextFormatting.YELLOW + I18n.format("misc.refinedstorage:pattern.inputs") + TextFormatting.RESET);
 
-                combineItems(tooltip, true, RSUtils.toNonNullList(pattern.getInputs()));
+                combineItems(tooltip, true, StackUtils.toNonNullList(pattern.getInputs()));
 
                 tooltip.add(TextFormatting.YELLOW + I18n.format("misc.refinedstorage:pattern.outputs") + TextFormatting.RESET);
             }
 
-            combineItems(tooltip, true, RSUtils.toNonNullList(pattern.getOutputs()));
+            combineItems(tooltip, true, StackUtils.toNonNullList(pattern.getOutputs()));
 
             if (isOredict(stack)) {
                 tooltip.add(TextFormatting.BLUE + I18n.format("misc.refinedstorage:pattern.oredict") + TextFormatting.RESET);
@@ -81,27 +77,6 @@ public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
             }
         } else {
             tooltip.add(TextFormatting.RED + I18n.format("misc.refinedstorage:pattern.invalid") + TextFormatting.RESET);
-
-            // Display a helpful message stating the outputs if this is a legacy pattern
-            if (stack.hasTagCompound() && stack.getTagCompound().hasKey("Inputs") && stack.getTagCompound().hasKey("Outputs")) {
-                tooltip.add(TextFormatting.WHITE + "This pattern is a legacy pattern made before RS 1.0, please re-make!" + TextFormatting.RESET);
-
-                tooltip.add("This pattern used to output:");
-
-                NBTTagList outputsTag = stack.getTagCompound().getTagList("Outputs", Constants.NBT.TAG_COMPOUND);
-
-                NonNullList<ItemStack> outputs = NonNullList.create();
-
-                for (int i = 0; i < outputsTag.tagCount(); ++i) {
-                    outputs.add(new ItemStack(outputsTag.getCompoundTagAt(i)));
-                }
-
-                combineItems(tooltip, true, outputs);
-
-                if (stack.getTagCompound().hasKey("Processing") && stack.getTagCompound().getBoolean("Processing")) {
-                    tooltip.add(TextFormatting.GREEN + "This pattern was a processing pattern!" + TextFormatting.RESET);
-                }
-            }
         }
     }
 
@@ -113,6 +88,7 @@ public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
         pattern.getTagCompound().setTag(String.format(NBT_SLOT, slot), stack.serializeNBT());
     }
 
+    @Nullable
     public static ItemStack getSlot(ItemStack pattern, int slot) {
         String id = String.format(NBT_SLOT, slot);
 
@@ -123,6 +99,7 @@ public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
         return new ItemStack(pattern.getTagCompound().getCompoundTag(id));
     }
 
+    // @todo: Store slot number for outputs as well, so it can be filled in the pattern grid when the pattern is re-inserted. For 1.13
     public static void addOutput(ItemStack pattern, ItemStack output) {
         if (!pattern.hasTagCompound()) {
             pattern.setTagCompound(new NBTTagCompound());
@@ -226,6 +203,7 @@ public class ItemPattern extends ItemBase implements ICraftingPatternProvider {
     @Override
     @Nonnull
     public ICraftingPattern create(World world, ItemStack stack, ICraftingPatternContainer container) {
-        return new CraftingPattern(world, container, stack);
+        // We copy the pattern stack because if we remove it from the inventory, the crafting task will use a pattern with an invalid stack...
+        return new CraftingPattern(world, container, stack.copy());
     }
 }

@@ -1,6 +1,5 @@
 package com.raoulvdberge.refinedstorage.apiimpl.autocrafting.task;
 
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPattern;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPatternContainer;
 import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPatternProvider;
@@ -11,14 +10,18 @@ import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.api.util.IStackList;
 import com.raoulvdberge.refinedstorage.apiimpl.API;
 import com.raoulvdberge.refinedstorage.apiimpl.util.Comparer;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.util.Constants;
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.fluids.FluidStack;
 
+import javax.annotation.Nullable;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,7 +35,9 @@ public abstract class CraftingStep implements ICraftingStep {
 
     protected INetwork network;
     protected ICraftingPattern pattern;
+
     protected Map<Integer, Integer> satisfied;
+
     protected boolean startedProcessing;
     protected List<ICraftingStep> preliminarySteps;
 
@@ -55,12 +60,14 @@ public abstract class CraftingStep implements ICraftingStep {
 
             if (container instanceof INetworkNodeProxy) {
                 INetworkNodeProxy proxy = (INetworkNodeProxy) container;
+
                 if (proxy.getNode() instanceof ICraftingPatternContainer) {
                     this.pattern = ((ICraftingPatternProvider) patternStack.getItem()).create(network.world(), patternStack, (ICraftingPatternContainer) proxy.getNode());
                     this.satisfied = new HashMap<>(pattern.getOutputs().size());
 
                     for (ItemStack stack : pattern.getOutputs()) {
                         int hashcode = API.instance().getItemStackHashCode(stack);
+
                         String id = String.format(NBT_SATISFIED, hashcode);
 
                         if (tag.hasKey(id)) {
@@ -71,7 +78,9 @@ public abstract class CraftingStep implements ICraftingStep {
                     this.startedProcessing = tag.getBoolean(NBT_STARTED_PROCESSING);
 
                     NBTTagList preliminaryTagList = tag.getTagList(NBT_PRELIMINARY_STEPS, Constants.NBT.TAG_COMPOUND);
+
                     this.preliminarySteps = new LinkedList<>();
+
                     for (int i = 0; i < preliminaryTagList.tagCount(); i++) {
                         NBTTagCompound stepTag = preliminaryTagList.getCompoundTagAt(i);
 
@@ -96,8 +105,8 @@ public abstract class CraftingStep implements ICraftingStep {
     }
 
     @Override
-    public List<ItemStack> getToInsert() {
-        return pattern.getInputs().stream().filter(Objects::nonNull).collect(Collectors.toList());
+    public List<ItemStack> getInputs() {
+        return pattern.getInputs().stream().filter(Objects::nonNull).filter(s -> !s.isEmpty()).collect(Collectors.toList());
     }
 
     @Override
@@ -109,7 +118,6 @@ public abstract class CraftingStep implements ICraftingStep {
     public boolean canStartProcessing() {
         return getPreliminarySteps().size() == 0;
     }
-
 
     @Override
     public void setStartedProcessing() {
@@ -129,6 +137,7 @@ public abstract class CraftingStep implements ICraftingStep {
     public boolean hasReceivedOutputs() {
         for (ItemStack stack : pattern.getOutputs()) {
             Integer received = satisfied.get(API.instance().getItemStackHashCode(stack));
+
             if (received == null || stack.getCount() > received) {
                 return false;
             }
@@ -143,34 +152,40 @@ public abstract class CraftingStep implements ICraftingStep {
 
     @Override
     public boolean hasReceivedOutput(ItemStack stack) {
-        Integer received = satisfied.get(API.instance().getItemStackHashCode(stack));
-        return received != null && received >= stack.getCount();
+        return getReceivedOutput(stack) >= stack.getCount();
     }
 
     @Override
     public int getReceivedOutput(ItemStack stack) {
         Integer received = satisfied.get(API.instance().getItemStackHashCode(stack));
+
         return received == null ? 0 : received;
     }
 
     @Override
     public boolean onReceiveOutput(ItemStack stack) {
         ItemStack compareStack = Comparer.stripTags(stack.copy());
+
         for (ItemStack output : pattern.getOutputs()) {
-            int hashcode = API.instance().getItemStackHashCode(output);
-            Integer received = satisfied.get(hashcode);
+            int hash = API.instance().getItemStackHashCode(output);
+
+            Integer received = satisfied.get(hash);
+
             if (received == null) {
                 received = 0;
             }
+
             if (API.instance().getComparer().isEqual(compareStack, output, CraftingTask.DEFAULT_COMPARE | (getPattern().isOredict() ? IComparer.COMPARE_OREDICT : 0))) {
                 if (received < output.getCount()) {
                     int toReceive = Math.min(output.getCount() - received, stack.getCount());
-                    satisfied.put(hashcode, received + toReceive);
+
+                    satisfied.put(hash, received + toReceive);
+
                     stack.shrink(toReceive);
 
                     network.markCraftingMonitorForUpdate();
 
-                    if (stack.getCount() == 0) {
+                    if (stack.isEmpty()) {
                         return true;
                     }
                 }
@@ -205,50 +220,77 @@ public abstract class CraftingStep implements ICraftingStep {
         ITEM, FLUID
     }
 
+    @Nullable
     protected AvailableType isItemAvailable(IStackList<ItemStack> items, IStackList<FluidStack> fluids, ItemStack stack, ItemStack actualStack, int compare) {
         if (actualStack == null || actualStack.isEmpty() || !items.trackedRemove(actualStack, stack.getCount())) {
-            FluidStack fluidInItem = RSUtils.getFluidFromStack(stack, true).getValue();
+            FluidStack fluidInItem;
 
-            if (fluidInItem != null && RSUtils.hasFluidBucket(fluidInItem)) {
+            if (API.instance().getComparer().isEqual(stack, StackUtils.WATER_BOTTLE)) {
+                FluidStack fluidStack = fluids.get(new FluidStack(FluidRegistry.WATER, Fluid.BUCKET_VOLUME), compare);
+                ItemStack emptyBottle = items.get(StackUtils.EMPTY_BOTTLE, compare);
+
+                if (emptyBottle != null && fluidStack != null && !emptyBottle.isEmpty() && items.trackedRemove(StackUtils.EMPTY_BOTTLE, 1)) {
+                    return AvailableType.FLUID;
+                }
+            } else if ((fluidInItem = StackUtils.getFluid(stack, true).getValue()) != null && StackUtils.hasFluidBucket(fluidInItem)) {
                 FluidStack fluidStack = fluids.get(fluidInItem, compare);
-                ItemStack bucket = items.get(RSUtils.EMPTY_BUCKET, compare);
+                ItemStack bucket = items.get(StackUtils.EMPTY_BUCKET, compare);
+
                 if (bucket != null && fluidStack != null && !bucket.isEmpty() && fluids.trackedRemove(fluidStack, fluidInItem.amount) && items.trackedRemove(bucket, 1)) {
                     return AvailableType.FLUID;
                 }
             }
+
             return null;
         }
+
         return AvailableType.ITEM;
     }
 
-    protected boolean extractItems(List<ItemStack> actualInputs, int compare, Deque<ItemStack> toInsertItems) {
-        for (ItemStack insertStack : getToInsert()) {
+    protected boolean extractItems(List<ItemStack> extractedItems, int compare, Deque<ItemStack> toInsertItems) {
+        for (ItemStack input : getInputs()) {
             // This will be a tool, like a hammer
-            if (insertStack.isItemStackDamageable()) {
+            if (input.isItemStackDamageable()) {
                 compare &= ~IComparer.COMPARE_DAMAGE;
             } else {
                 compare |= IComparer.COMPARE_DAMAGE;
             }
 
-            ItemStack input = network.extractItem(insertStack, insertStack.getCount(), compare, false);
-            if (input != null) {
-                actualInputs.add(input);
+            ItemStack extracted = network.extractItem(input, input.getCount(), compare, false);
+
+            if (extracted != null) {
+                extractedItems.add(extracted);
             } else {
                 boolean abort = true;
-                FluidStack fluidInItem = RSUtils.getFluidFromStack(insertStack, true).getValue();
-                if (fluidInItem != null) {
+
+                FluidStack fluidInItem;
+
+                if (API.instance().getComparer().isEqual(input, StackUtils.WATER_BOTTLE)) {
+                    FluidStack fluidStack = network.extractFluid(new FluidStack(FluidRegistry.WATER, Fluid.BUCKET_VOLUME), Fluid.BUCKET_VOLUME, compare, true); // Simulate is true because we won't actually get the fluid out of the storage for bottles!
+                    ItemStack emptyBottleStack = network.extractItem(StackUtils.EMPTY_BOTTLE, 1, compare, false);
+
+                    if (fluidStack != null && fluidStack.amount == Fluid.BUCKET_VOLUME && emptyBottleStack != null) {
+                        abort = false;
+
+                        extractedItems.add(input.copy());
+                    }
+                } else if ((fluidInItem = StackUtils.getFluid(input, true).getValue()) != null) {
                     FluidStack fluidStack = network.extractFluid(fluidInItem, fluidInItem.amount, compare, false);
-                    ItemStack bucketStack = network.extractItem(RSUtils.EMPTY_BUCKET, 1, compare, false);
+                    ItemStack bucketStack = network.extractItem(StackUtils.EMPTY_BUCKET, 1, compare, false);
+
                     if (fluidStack != null && fluidStack.amount == fluidInItem.amount && bucketStack != null) {
                         abort = false;
-                        actualInputs.add(insertStack.copy());
+
+                        extractedItems.add(input.copy());
                     }
                 }
 
                 if (abort) {
                     // Abort task re-insert taken stacks and reset state
-                    toInsertItems.addAll(actualInputs);
+                    toInsertItems.addAll(extractedItems);
+
                     startedProcessing = false;
+
                     return false;
                 }
             }
@@ -257,10 +299,11 @@ public abstract class CraftingStep implements ICraftingStep {
         return true;
     }
 
-    public static ICraftingStep toCraftingStep(NBTTagCompound compound, INetwork network) {
+    @Nullable
+    public static ICraftingStep toCraftingStep(NBTTagCompound tag, INetwork network) {
         CraftingStep step = null;
 
-        switch (compound.getString(CraftingStep.NBT_CRAFTING_STEP_TYPE)) {
+        switch (tag.getString(CraftingStep.NBT_CRAFTING_STEP_TYPE)) {
             case CraftingStepCraft.ID:
                 step = new CraftingStepCraft(network);
                 break;
@@ -269,7 +312,7 @@ public abstract class CraftingStep implements ICraftingStep {
                 break;
         }
 
-        if (step != null && step.readFromNBT(compound)) {
+        if (step != null && step.readFromNBT(tag)) {
             return step;
         }
 

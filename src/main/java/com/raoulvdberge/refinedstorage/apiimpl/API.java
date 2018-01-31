@@ -1,5 +1,7 @@
 package com.raoulvdberge.refinedstorage.apiimpl;
 
+import com.raoulvdberge.refinedstorage.RS;
+import com.raoulvdberge.refinedstorage.RSGui;
 import com.raoulvdberge.refinedstorage.api.IRSAPI;
 import com.raoulvdberge.refinedstorage.api.RSAPIInject;
 import com.raoulvdberge.refinedstorage.api.autocrafting.craftingmonitor.ICraftingMonitorElementList;
@@ -7,6 +9,7 @@ import com.raoulvdberge.refinedstorage.api.autocrafting.craftingmonitor.ICraftin
 import com.raoulvdberge.refinedstorage.api.autocrafting.preview.ICraftingPreviewElementRegistry;
 import com.raoulvdberge.refinedstorage.api.autocrafting.registry.ICraftingTaskRegistry;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
+import com.raoulvdberge.refinedstorage.api.network.grid.wireless.IWirelessGridRegistry;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNode;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeManager;
 import com.raoulvdberge.refinedstorage.api.network.node.INetworkNodeProxy;
@@ -16,6 +19,7 @@ import com.raoulvdberge.refinedstorage.api.network.readerwriter.IReaderWriterHan
 import com.raoulvdberge.refinedstorage.api.solderer.ISoldererRegistry;
 import com.raoulvdberge.refinedstorage.api.storage.IStorageDiskBehavior;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
+import com.raoulvdberge.refinedstorage.api.util.IQuantityFormatter;
 import com.raoulvdberge.refinedstorage.api.util.IStackList;
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.craftingmonitor.CraftingMonitorElementList;
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.craftingmonitor.CraftingMonitorElementRegistry;
@@ -23,18 +27,25 @@ import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.preview.CraftingPrev
 import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.registry.CraftingTaskRegistry;
 import com.raoulvdberge.refinedstorage.apiimpl.network.NetworkNodeManager;
 import com.raoulvdberge.refinedstorage.apiimpl.network.NetworkNodeRegistry;
+import com.raoulvdberge.refinedstorage.apiimpl.network.grid.wireless.WirelessGridRegistry;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
 import com.raoulvdberge.refinedstorage.apiimpl.network.readerwriter.ReaderWriterChannel;
 import com.raoulvdberge.refinedstorage.apiimpl.network.readerwriter.ReaderWriterHandlerRegistry;
 import com.raoulvdberge.refinedstorage.apiimpl.solderer.SoldererRegistry;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageDiskBehavior;
 import com.raoulvdberge.refinedstorage.apiimpl.util.Comparer;
+import com.raoulvdberge.refinedstorage.apiimpl.util.QuantityFormatter;
 import com.raoulvdberge.refinedstorage.apiimpl.util.StackListFluid;
 import com.raoulvdberge.refinedstorage.apiimpl.util.StackListItem;
-import com.raoulvdberge.refinedstorage.proxy.CapabilityNetworkNodeProxy;
+import com.raoulvdberge.refinedstorage.capability.CapabilityNetworkNodeProxy;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTBase;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
+import net.minecraft.util.EnumHand;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.storage.MapStorage;
@@ -49,6 +60,7 @@ public class API implements IRSAPI {
     private static final IRSAPI INSTANCE = new API();
 
     private IComparer comparer = new Comparer();
+    private IQuantityFormatter quantityFormatter = new QuantityFormatter();
     private INetworkNodeRegistry networkNodeRegistry = new NetworkNodeRegistry();
     private IStorageDiskBehavior storageDiskBehavior = new StorageDiskBehavior();
     private ISoldererRegistry soldererRegistry = new SoldererRegistry();
@@ -56,6 +68,7 @@ public class API implements IRSAPI {
     private ICraftingMonitorElementRegistry craftingMonitorElementRegistry = new CraftingMonitorElementRegistry();
     private ICraftingPreviewElementRegistry craftingPreviewElementRegistry = new CraftingPreviewElementRegistry();
     private IReaderWriterHandlerRegistry readerWriterHandlerRegistry = new ReaderWriterHandlerRegistry();
+    private IWirelessGridRegistry gridRegistry = new WirelessGridRegistry();
 
     public static IRSAPI instance() {
         return INSTANCE;
@@ -87,6 +100,13 @@ public class API implements IRSAPI {
     }
 
     @Override
+    @Nonnull
+    public IQuantityFormatter getQuantityFormatter() {
+        return quantityFormatter;
+    }
+
+    @Override
+    @Nonnull
     public INetworkNodeRegistry getNetworkNodeRegistry() {
         return networkNodeRegistry;
     }
@@ -112,6 +132,7 @@ public class API implements IRSAPI {
     }
 
     @Override
+    @Nonnull
     public IStorageDiskBehavior getDefaultStorageDiskBehavior() {
         return storageDiskBehavior;
     }
@@ -170,6 +191,17 @@ public class API implements IRSAPI {
         return new CraftingMonitorElementList();
     }
 
+    @Nonnull
+    @Override
+    public IWirelessGridRegistry getWirelessGridRegistry() {
+        return gridRegistry;
+    }
+
+    @Override
+    public void openWirelessGrid(EntityPlayer player, EnumHand hand, int networkDimension, int id) {
+        player.openGui(RS.INSTANCE, RSGui.WIRELESS_GRID, player.getEntityWorld(), hand.ordinal(), networkDimension, id);
+    }
+
     @Override
     public void discoverNode(World world, BlockPos pos) {
         for (EnumFacing facing : EnumFacing.VALUES) {
@@ -190,18 +222,61 @@ public class API implements IRSAPI {
 
     @Override
     public int getItemStackHashCode(ItemStack stack, boolean tag) {
-        return stack.getItem().hashCode() * (stack.getItemDamage() + 1) * ((tag && stack.hasTagCompound()) ? stack.getTagCompound().hashCode() : 1);
+        int result = stack.getItem().hashCode();
+        result = 31 * result + (stack.getItemDamage() + 1);
+
+        if (tag && stack.hasTagCompound()) {
+            result = calcHashCode(stack.getTagCompound(), result);
+        }
+
+        return result;
+    }
+
+    private int calcHashCode(NBTBase tag, int result) {
+        if (tag instanceof NBTTagCompound) {
+            result = calcHashCode((NBTTagCompound) tag, result);
+        } else if (tag instanceof NBTTagList) {
+            result = calcHashCode((NBTTagList) tag, result);
+        } else {
+            result = 31 * result + tag.hashCode();
+        }
+
+        return result;
+    }
+
+    private int calcHashCode(NBTTagCompound tag, int result) {
+        for (String key : tag.getKeySet()) {
+            result = 31 * result + key.hashCode();
+            result = calcHashCode(tag.getTag(key), result);
+        }
+
+        return result;
+    }
+
+    private int calcHashCode(NBTTagList tag, int result) {
+        for (int i = 0; i < tag.tagCount(); ++i) {
+            result = calcHashCode(tag.get(i), result);
+        }
+
+        return result;
     }
 
     @Override
     public int getFluidStackHashCode(FluidStack stack) {
-        return stack.getFluid().hashCode() * (stack.tag != null ? stack.tag.hashCode() : 1);
+        int result = stack.getFluid().hashCode();
+
+        if (stack.tag != null) {
+            result = calcHashCode(stack.tag, result);
+        }
+
+        return result;
     }
 
     @Override
     public int getNetworkNodeHashCode(INetworkNode node) {
         int result = node.getPos().hashCode();
         result = 31 * result + node.getWorld().provider.getDimension();
+
         return result;
     }
 

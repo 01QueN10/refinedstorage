@@ -2,17 +2,20 @@ package com.raoulvdberge.refinedstorage.tile.grid.portable;
 
 import com.raoulvdberge.refinedstorage.RS;
 import com.raoulvdberge.refinedstorage.RSBlocks;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.network.INetwork;
-import com.raoulvdberge.refinedstorage.api.network.grid.IItemGridHandler;
+import com.raoulvdberge.refinedstorage.api.network.grid.GridType;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGrid;
+import com.raoulvdberge.refinedstorage.api.network.grid.IGridTab;
+import com.raoulvdberge.refinedstorage.api.network.grid.handler.IItemGridHandler;
 import com.raoulvdberge.refinedstorage.api.storage.*;
-import com.raoulvdberge.refinedstorage.apiimpl.network.grid.ItemGridHandlerPortable;
+import com.raoulvdberge.refinedstorage.api.util.IFilter;
+import com.raoulvdberge.refinedstorage.apiimpl.network.grid.handler.ItemGridHandlerPortable;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNodeGrid;
 import com.raoulvdberge.refinedstorage.apiimpl.network.node.diskdrive.NetworkNodeDiskDrive;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageCacheItemPortable;
 import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageDiskItemPortable;
+import com.raoulvdberge.refinedstorage.apiimpl.storage.StorageTrackerItem;
 import com.raoulvdberge.refinedstorage.block.BlockPortableGrid;
-import com.raoulvdberge.refinedstorage.block.GridType;
 import com.raoulvdberge.refinedstorage.block.PortableGridDiskState;
 import com.raoulvdberge.refinedstorage.block.PortableGridType;
 import com.raoulvdberge.refinedstorage.gui.grid.GuiGrid;
@@ -24,18 +27,16 @@ import com.raoulvdberge.refinedstorage.inventory.ItemHandlerStorage;
 import com.raoulvdberge.refinedstorage.item.ItemBlockPortableGrid;
 import com.raoulvdberge.refinedstorage.item.ItemEnergyItem;
 import com.raoulvdberge.refinedstorage.item.ItemWirelessGrid;
-import com.raoulvdberge.refinedstorage.item.filter.Filter;
-import com.raoulvdberge.refinedstorage.item.filter.FilterTab;
 import com.raoulvdberge.refinedstorage.tile.TileBase;
 import com.raoulvdberge.refinedstorage.tile.config.IRedstoneConfigurable;
 import com.raoulvdberge.refinedstorage.tile.config.RedstoneMode;
-import com.raoulvdberge.refinedstorage.tile.data.ITileDataConsumer;
-import com.raoulvdberge.refinedstorage.tile.data.ITileDataProducer;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataManager;
 import com.raoulvdberge.refinedstorage.tile.data.TileDataParameter;
-import com.raoulvdberge.refinedstorage.tile.grid.IGrid;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
+import com.raoulvdberge.refinedstorage.util.WorldUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.inventory.InventoryCraftResult;
 import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.ItemStack;
@@ -43,10 +44,12 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.datasync.DataSerializers;
 import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.common.util.Constants;
 import net.minecraftforge.energy.CapabilityEnergy;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.items.CapabilityItemHandler;
+import net.minecraftforge.items.IItemHandlerModifiable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -54,103 +57,60 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, IRedstoneConfigurable {
-    public static final TileDataParameter<Integer> ENERGY_STORED = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.energyStorage.getEnergyStored();
+    public static final TileDataParameter<Integer, TilePortableGrid> REDSTONE_MODE = RedstoneMode.createParameter();
+    public static final TileDataParameter<Integer, TilePortableGrid> ENERGY_STORED = new TileDataParameter<>(DataSerializers.VARINT, 0, t -> t.energyStorage.getEnergyStored());
+    public static final TileDataParameter<Integer, TilePortableGrid> SORTING_DIRECTION = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getSortingDirection, (t, v) -> {
+        if (IGrid.isValidSortingDirection(v)) {
+            t.setSortingDirection(v);
+            t.markDirty();
         }
-    });
-
-    public static final TileDataParameter<Integer> SORTING_DIRECTION = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.getSortingDirection();
+    }, p -> GuiGrid.scheduleSort());
+    public static final TileDataParameter<Integer, TilePortableGrid> SORTING_TYPE = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getSortingType, (t, v) -> {
+        if (IGrid.isValidSortingType(v)) {
+            t.setSortingType(v);
+            t.markDirty();
         }
-    }, new ITileDataConsumer<Integer, TilePortableGrid>() {
-        @Override
-        public void setValue(TilePortableGrid tile, Integer value) {
-            if (NetworkNodeGrid.isValidSortingDirection(value)) {
-                tile.setSortingDirection(value);
-                tile.markDirty();
-            }
+    }, p -> GuiGrid.scheduleSort());
+    public static final TileDataParameter<Integer, TilePortableGrid> SEARCH_BOX_MODE = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getSearchBoxMode, (t, v) -> {
+        if (IGrid.isValidSearchBoxMode(v)) {
+            t.setSearchBoxMode(v);
+            t.markDirty();
         }
-    }, parameter -> GuiGrid.markForSorting());
-
-    public static final TileDataParameter<Integer> SORTING_TYPE = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.getSortingType();
-        }
-    }, new ITileDataConsumer<Integer, TilePortableGrid>() {
-        @Override
-        public void setValue(TilePortableGrid tile, Integer value) {
-            if (NetworkNodeGrid.isValidSortingType(value)) {
-                tile.setSortingType(value);
-                tile.markDirty();
-            }
-        }
-    }, parameter -> GuiGrid.markForSorting());
-
-    public static final TileDataParameter<Integer> SEARCH_BOX_MODE = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.getSearchBoxMode();
-        }
-    }, new ITileDataConsumer<Integer, TilePortableGrid>() {
-        @Override
-        public void setValue(TilePortableGrid tile, Integer value) {
-            if (NetworkNodeGrid.isValidSearchBoxMode(value)) {
-                tile.setSearchBoxMode(value);
-                tile.markDirty();
-            }
-        }
-    }, parameter -> {
+    }, p -> {
         if (Minecraft.getMinecraft().currentScreen instanceof GuiGrid) {
-            ((GuiGrid) Minecraft.getMinecraft().currentScreen).updateSearchFieldFocus(parameter.getValue());
+            ((GuiGrid) Minecraft.getMinecraft().currentScreen).updateSearchFieldFocus(p);
         }
     });
-
-    public static final TileDataParameter<Integer> SIZE = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.getSize();
+    public static final TileDataParameter<Integer, TilePortableGrid> SIZE = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getSize, (t, v) -> {
+        if (IGrid.isValidSize(v)) {
+            t.setSize(v);
+            t.markDirty();
         }
-    }, new ITileDataConsumer<Integer, TilePortableGrid>() {
-        @Override
-        public void setValue(TilePortableGrid tile, Integer value) {
-            if (NetworkNodeGrid.isValidSize(value)) {
-                tile.setSize(value);
-                tile.markDirty();
-            }
-        }
-    }, parameter -> {
+    }, p -> {
         if (Minecraft.getMinecraft().currentScreen != null) {
             Minecraft.getMinecraft().currentScreen.initGui();
         }
     });
-
-    public static final TileDataParameter<Integer> TAB_SELECTED = new TileDataParameter<>(DataSerializers.VARINT, 0, new ITileDataProducer<Integer, TilePortableGrid>() {
-        @Override
-        public Integer getValue(TilePortableGrid tile) {
-            return tile.getTabSelected();
-        }
-    }, new ITileDataConsumer<Integer, TilePortableGrid>() {
-        @Override
-        public void setValue(TilePortableGrid tile, Integer value) {
-            tile.setTabSelected(value == tile.getTabSelected() ? -1 : value);
-            tile.markDirty();
-        }
-    }, parameter -> {
+    public static final TileDataParameter<Integer, TilePortableGrid> TAB_SELECTED = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getTabSelected, (t, v) -> {
+        t.setTabSelected(v == t.getTabSelected() ? -1 : v);
+        t.markDirty();
+    }, p -> {
         if (Minecraft.getMinecraft().currentScreen instanceof GuiGrid) {
-            ((GuiGrid) Minecraft.getMinecraft().currentScreen).markForSorting();
+            GuiGrid.scheduleSort();
         }
     });
-
-    public static final TileDataParameter<Integer> REDSTONE_MODE = RedstoneMode.createParameter();
+    public static final TileDataParameter<Integer, TilePortableGrid> TAB_PAGE = new TileDataParameter<>(DataSerializers.VARINT, 0, TilePortableGrid::getTabPage, (t, v) -> {
+        if (v >= 0 && v <= t.getTotalTabPages()) {
+            t.setTabPage(v);
+            t.markDirty();
+        }
+    });
 
     private static final String NBT_ENERGY = "Energy";
     private static final String NBT_DISK_STATE = "DiskState";
     private static final String NBT_CONNECTED = "Connected";
+
+    private static final String NBT_STORAGE_TRACKER = "StorageTracker";
 
     private EnergyForge energyStorage = new EnergyForge(ItemEnergyItem.CAPACITY);
     private PortableGridType type;
@@ -161,10 +121,11 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
     private int sortingDirection;
     private int searchBoxMode;
     private int tabSelected;
+    private int tabPage;
     private int size;
 
-    private List<Filter> filters = new ArrayList<>();
-    private List<FilterTab> tabs = new ArrayList<>();
+    private List<IFilter> filters = new ArrayList<>();
+    private List<IGridTab> tabs = new ArrayList<>();
     private ItemHandlerFilter filter = new ItemHandlerFilter(filters, tabs, new ItemHandlerListenerTile(this));
     private ItemHandlerBase disk = new ItemHandlerBase(1, new ItemHandlerListenerTile(this), s -> NetworkNodeDiskDrive.VALIDATOR_STORAGE_DISK.test(s) && ((IStorageDiskProvider) s.getItem()).create(s).getType() == StorageDiskType.ITEMS) {
         @Override
@@ -172,6 +133,10 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
             super.onContentsChanged(slot);
 
             if (FMLCommonHandler.instance().getEffectiveSide() == Side.SERVER) {
+                if (itemHandler != null) {
+                    cache.removeListener(itemHandler);
+                }
+
                 if (getStackInSlot(slot).isEmpty()) {
                     storage = null;
                 } else {
@@ -186,12 +151,13 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
                 }
 
                 cache.invalidate();
-                cache.setListener(null);
 
                 if (storage == null) {
                     itemHandler = null;
                 } else {
                     itemHandler = new ItemHandlerStorage(storage, cache);
+
+                    cache.addListener(itemHandler);
                 }
 
                 if (world != null) {
@@ -219,14 +185,17 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
     private PortableGridDiskState diskState = PortableGridDiskState.NONE;
     private boolean connected;
 
+    private StorageTrackerItem storageTracker = new StorageTrackerItem(this::markDirty);
+
     public TilePortableGrid() {
+        dataManager.addWatchedParameter(REDSTONE_MODE);
         dataManager.addWatchedParameter(ENERGY_STORED);
         dataManager.addWatchedParameter(SORTING_DIRECTION);
         dataManager.addWatchedParameter(SORTING_TYPE);
         dataManager.addWatchedParameter(SEARCH_BOX_MODE);
         dataManager.addWatchedParameter(SIZE);
         dataManager.addWatchedParameter(TAB_SELECTED);
-        dataManager.addWatchedParameter(REDSTONE_MODE);
+        dataManager.addWatchedParameter(TAB_PAGE);
     }
 
     public PortableGridDiskState getDiskState() {
@@ -250,18 +219,23 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         this.sortingDirection = ItemWirelessGrid.getSortingDirection(stack);
         this.searchBoxMode = ItemWirelessGrid.getSearchBoxMode(stack);
         this.tabSelected = ItemWirelessGrid.getTabSelected(stack);
+        this.tabPage = ItemWirelessGrid.getTabPage(stack);
         this.size = ItemWirelessGrid.getSize(stack);
 
         this.energyStorage.setEnergyStored(stack.getCapability(CapabilityEnergy.ENERGY, null).getEnergyStored());
 
         if (stack.hasTagCompound()) {
             for (int i = 0; i < 4; ++i) {
-                RSUtils.readItems(filter, i, stack.getTagCompound());
+                StackUtils.readItems(filter, i, stack.getTagCompound());
             }
 
-            RSUtils.readItems(disk, 4, stack.getTagCompound());
+            StackUtils.readItems(disk, 4, stack.getTagCompound());
 
             this.redstoneMode = RedstoneMode.read(stack.getTagCompound());
+
+            if (stack.getTagCompound().hasKey(PortableGrid.NBT_STORAGE_TRACKER)) {
+                storageTracker.readFromNBT(stack.getTagCompound().getTagList(PortableGrid.NBT_STORAGE_TRACKER, Constants.NBT.TAG_COMPOUND));
+            }
         }
 
         this.diskState = getDiskState(this);
@@ -283,14 +257,17 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         stack.getTagCompound().setInteger(NetworkNodeGrid.NBT_SEARCH_BOX_MODE, searchBoxMode);
         stack.getTagCompound().setInteger(NetworkNodeGrid.NBT_SIZE, size);
         stack.getTagCompound().setInteger(NetworkNodeGrid.NBT_TAB_SELECTED, tabSelected);
+        stack.getTagCompound().setInteger(NetworkNodeGrid.NBT_TAB_PAGE, tabPage);
+
+        stack.getTagCompound().setTag(PortableGrid.NBT_STORAGE_TRACKER, storageTracker.serializeNBT());
 
         stack.getCapability(CapabilityEnergy.ENERGY, null).receiveEnergy(energyStorage.getEnergyStored(), false);
 
         for (int i = 0; i < 4; ++i) {
-            RSUtils.writeItems(filter, i, stack.getTagCompound());
+            StackUtils.writeItems(filter, i, stack.getTagCompound());
         }
 
-        RSUtils.writeItems(disk, 4, stack.getTagCompound());
+        StackUtils.writeItems(disk, 4, stack.getTagCompound());
 
         redstoneMode.write(stack.getTagCompound());
 
@@ -345,6 +322,16 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
     }
 
     @Override
+    public int getTabPage() {
+        return world.isRemote ? TAB_PAGE.getValue() : Math.min(tabPage, getTotalTabPages());
+    }
+
+    @Override
+    public int getTotalTabPages() {
+        return (int) Math.floor((float) Math.max(0, tabs.size() - 1) / (float) IGrid.TABS_PER_PAGE);
+    }
+
+    @Override
     public int getSize() {
         return world.isRemote ? SIZE.getValue() : size;
     }
@@ -363,6 +350,10 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
 
     public void setTabSelected(int tabSelected) {
         this.tabSelected = tabSelected;
+    }
+
+    public void setTabPage(int page) {
+        this.tabPage = page;
     }
 
     public void setSize(int size) {
@@ -400,23 +391,30 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
     }
 
     @Override
-    public List<Filter> getFilters() {
+    public void onTabPageChanged(int page) {
+        if (page >= 0 && page <= getTotalTabPages()) {
+            TileDataManager.setParameter(TilePortableGrid.TAB_PAGE, page);
+        }
+    }
+
+    @Override
+    public List<IFilter> getFilters() {
         return filters;
     }
 
     @Override
-    public List<FilterTab> getTabs() {
+    public List<IGridTab> getTabs() {
         return tabs;
     }
 
     @Override
-    public ItemHandlerBase getFilter() {
+    public IItemHandlerModifiable getFilter() {
         return filter;
     }
 
     @Override
-    public TileDataParameter<Integer> getRedstoneModeConfig() {
-        return REDSTONE_MODE;
+    public StorageTrackerItem getStorageTracker() {
+        return storageTracker;
     }
 
     @Override
@@ -480,7 +478,7 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
 
     @Override
     public List<EntityPlayer> getWatchers() {
-        return dataManager.getWatchers();
+        return dataManager.getPlayersWatching();
     }
 
     @Override
@@ -509,7 +507,7 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         if (this.diskState != newDiskState) {
             this.diskState = newDiskState;
 
-            RSUtils.updateBlock(world, pos);
+            WorldUtils.updateBlock(world, pos);
         }
     }
 
@@ -519,7 +517,7 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         if (this.connected != isConnected) {
             this.connected = isConnected;
 
-            RSUtils.updateBlock(world, pos);
+            WorldUtils.updateBlock(world, pos);
         }
     }
 
@@ -541,13 +539,16 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         tag.setInteger(NetworkNodeGrid.NBT_SEARCH_BOX_MODE, searchBoxMode);
         tag.setInteger(NetworkNodeGrid.NBT_SIZE, size);
         tag.setInteger(NetworkNodeGrid.NBT_TAB_SELECTED, tabSelected);
+        tag.setInteger(NetworkNodeGrid.NBT_TAB_PAGE, tabPage);
 
-        RSUtils.writeItems(disk, 0, tag);
-        RSUtils.writeItems(filter, 1, tag);
+        StackUtils.writeItems(disk, 0, tag);
+        StackUtils.writeItems(filter, 1, tag);
 
         tag.setInteger(NBT_ENERGY, energyStorage.getEnergyStored());
 
         redstoneMode.write(tag);
+
+        tag.setTag(NBT_STORAGE_TRACKER, storageTracker.serializeNBT());
 
         return tag;
     }
@@ -576,14 +577,22 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
             tabSelected = tag.getInteger(NetworkNodeGrid.NBT_TAB_SELECTED);
         }
 
-        RSUtils.readItems(disk, 0, tag);
-        RSUtils.readItems(filter, 1, tag);
+        if (tag.hasKey(NetworkNodeGrid.NBT_TAB_PAGE)) {
+            tabPage = tag.getInteger(NetworkNodeGrid.NBT_TAB_PAGE);
+        }
+
+        StackUtils.readItems(disk, 0, tag);
+        StackUtils.readItems(filter, 1, tag);
 
         if (tag.hasKey(NBT_ENERGY)) {
             energyStorage.setEnergyStored(tag.getInteger(NBT_ENERGY));
         }
 
         redstoneMode = RedstoneMode.read(tag);
+
+        if (tag.hasKey(NBT_STORAGE_TRACKER)) {
+            storageTracker.readFromNBT(tag.getTagList(NBT_STORAGE_TRACKER, Constants.NBT.TAG_COMPOUND));
+        }
     }
 
     @Override
@@ -627,7 +636,7 @@ public class TilePortableGrid extends TileBase implements IGrid, IPortableGrid, 
         return super.getCapability(capability, facing);
     }
 
-    public void onOpened(EntityPlayer player) {
+    public void onOpened(EntityPlayerMP player) {
         cache.sendUpdateTo(player);
 
         drainEnergy(RS.INSTANCE.config.portableGridOpenUsage);

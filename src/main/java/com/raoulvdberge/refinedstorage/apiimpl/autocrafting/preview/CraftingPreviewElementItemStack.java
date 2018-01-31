@@ -3,6 +3,7 @@ package com.raoulvdberge.refinedstorage.apiimpl.autocrafting.preview;
 import com.raoulvdberge.refinedstorage.api.autocrafting.preview.ICraftingPreviewElement;
 import com.raoulvdberge.refinedstorage.api.render.IElementDrawers;
 import com.raoulvdberge.refinedstorage.gui.GuiBase;
+import com.raoulvdberge.refinedstorage.util.RenderUtils;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.item.Item;
@@ -19,8 +20,8 @@ public class CraftingPreviewElementItemStack implements ICraftingPreviewElement<
     private ItemStack stack;
     private int available;
     private boolean missing;
+    // If missing is true then toCraft is the missing amount
     private int toCraft;
-    // if missing is true then toCraft is the missing amount
 
     public CraftingPreviewElementItemStack(ItemStack stack) {
         this.stack = ItemHandlerHelper.copyStackWithSize(stack, 1);
@@ -53,6 +54,7 @@ public class CraftingPreviewElementItemStack implements ICraftingPreviewElement<
 
         ItemStack stack = new ItemStack(item, 1, meta);
         stack.setTagCompound(tag);
+
         return new CraftingPreviewElementItemStack(stack, available, missing, toCraft);
     }
 
@@ -67,11 +69,14 @@ public class CraftingPreviewElementItemStack implements ICraftingPreviewElement<
         if (missing) {
             drawers.getOverlayDrawer().draw(x, y, 0xFFF2DEDE);
         }
+
         x += 5;
         y += 7;
+
         drawers.getItemDrawer().draw(x, y, getElement());
 
-        float scale = 0.5f;
+        float scale = drawers.getFontRenderer().getUnicodeFlag() ? 1F : 0.5F;
+
         y += 2;
 
         GlStateManager.pushMatrix();
@@ -79,13 +84,13 @@ public class CraftingPreviewElementItemStack implements ICraftingPreviewElement<
 
         if (getToCraft() > 0) {
             String format = hasMissing() ? "gui.refinedstorage:crafting_preview.missing" : "gui.refinedstorage:crafting_preview.to_craft";
-            drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + 23, scale), GuiBase.calculateOffsetOnScale(y, scale), GuiBase.t(format, getToCraft()));
+            drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + 23, scale), RenderUtils.getOffsetOnScale(y, scale), GuiBase.t(format, getToCraft()));
 
             y += 7;
         }
 
         if (getAvailable() > 0) {
-            drawers.getStringDrawer().draw(GuiBase.calculateOffsetOnScale(x + 23, scale), GuiBase.calculateOffsetOnScale(y, scale), GuiBase.t("gui.refinedstorage:crafting_preview.available", getAvailable()));
+            drawers.getStringDrawer().draw(RenderUtils.getOffsetOnScale(x + 23, scale), RenderUtils.getOffsetOnScale(y, scale), GuiBase.t("gui.refinedstorage:crafting_preview.available", getAvailable()));
         }
 
         GlStateManager.popMatrix();

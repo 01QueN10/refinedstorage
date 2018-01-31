@@ -35,8 +35,6 @@ public class ItemStorageDisk extends ItemBase implements IStorageDiskProvider<It
     public static final int TYPE_CREATIVE = 4;
     public static final int TYPE_DEBUG = 5;
 
-    private NBTTagCompound debugDiskTag;
-
     public ItemStorageDisk() {
         super("storage_disk");
 
@@ -70,31 +68,29 @@ public class ItemStorageDisk extends ItemBase implements IStorageDiskProvider<It
     }
 
     private void applyDebugDiskData(ItemStack stack) {
-        if (debugDiskTag == null) {
-            debugDiskTag = API.instance().getDefaultStorageDiskBehavior().getTag(StorageDiskType.ITEMS);
+        NBTTagCompound debugDiskTag = API.instance().getDefaultStorageDiskBehavior().getTag(StorageDiskType.ITEMS);
 
-            StorageDiskItem storage = new StorageDiskItem(debugDiskTag, -1);
+        StorageDiskItem storage = new StorageDiskItem(debugDiskTag, -1);
 
-            Iterator<Item> it = REGISTRY.iterator();
+        Iterator<Item> it = REGISTRY.iterator();
 
-            while (it.hasNext()) {
-                Item item = it.next();
+        while (it.hasNext()) {
+            Item item = it.next();
 
-                if (item != RSItems.STORAGE_DISK) {
-                    NonNullList<ItemStack> stacks = NonNullList.create();
+            if (item != RSItems.STORAGE_DISK) {
+                NonNullList<ItemStack> stacks = NonNullList.create();
 
-                    item.getSubItems(CreativeTabs.INVENTORY, stacks);
+                item.getSubItems(CreativeTabs.SEARCH, stacks);
 
-                    for (ItemStack itemStack : stacks) {
-                        storage.insert(itemStack, 1000, false);
-                    }
+                for (ItemStack itemStack : stacks) {
+                    storage.insert(itemStack, 1000, false);
                 }
             }
-
-            storage.writeToNBT();
         }
 
-        stack.setTagCompound(debugDiskTag.copy());
+        storage.writeToNBT();
+
+        stack.setTagCompound(debugDiskTag);
     }
 
     @Override
@@ -105,9 +101,9 @@ public class ItemStorageDisk extends ItemBase implements IStorageDiskProvider<It
 
         if (storage.isValid(stack)) {
             if (storage.getCapacity() == -1) {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", storage.getStored()));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored", API.instance().getQuantityFormatter().format(storage.getStored())));
             } else {
-                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", storage.getStored(), storage.getCapacity()));
+                tooltip.add(I18n.format("misc.refinedstorage:storage.stored_capacity", API.instance().getQuantityFormatter().format(storage.getStored()), API.instance().getQuantityFormatter().format(storage.getCapacity())));
             }
         }
     }

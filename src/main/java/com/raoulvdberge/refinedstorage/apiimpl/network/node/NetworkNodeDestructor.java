@@ -1,7 +1,6 @@
 package com.raoulvdberge.refinedstorage.apiimpl.network.node;
 
 import com.raoulvdberge.refinedstorage.RS;
-import com.raoulvdberge.refinedstorage.RSUtils;
 import com.raoulvdberge.refinedstorage.api.util.IComparer;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerBase;
 import com.raoulvdberge.refinedstorage.inventory.ItemHandlerFluid;
@@ -12,14 +11,19 @@ import com.raoulvdberge.refinedstorage.tile.TileDestructor;
 import com.raoulvdberge.refinedstorage.tile.config.IComparable;
 import com.raoulvdberge.refinedstorage.tile.config.IFilterable;
 import com.raoulvdberge.refinedstorage.tile.config.IType;
+import com.raoulvdberge.refinedstorage.util.StackUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
+import net.minecraft.block.BlockShulkerBox;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.inventory.InventoryHelper;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.tileentity.TileEntityShulkerBox;
+import net.minecraft.util.NonNullList;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -37,7 +41,6 @@ import net.minecraftforge.fluids.capability.wrappers.FluidBlockWrapper;
 import net.minecraftforge.items.IItemHandler;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 public class NetworkNodeDestructor extends NetworkNode implements IComparable, IFilterable, IType {
@@ -53,7 +56,7 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
     private ItemHandlerBase itemFilters = new ItemHandlerBase(9, new ItemHandlerListenerNetworkNode(this));
     private ItemHandlerFluid fluidFilters = new ItemHandlerFluid(9, new ItemHandlerListenerNetworkNode(this));
 
-    private ItemHandlerUpgrade upgrades = new ItemHandlerUpgrade(4, new ItemHandlerListenerNetworkNode(this), ItemUpgrade.TYPE_SPEED, ItemUpgrade.TYPE_SILK_TOUCH, ItemUpgrade.TYPE_FORTUNE);
+    private ItemHandlerUpgrade upgrades = new ItemHandlerUpgrade(4, new ItemHandlerListenerNetworkNode(this), ItemUpgrade.TYPE_SPEED, ItemUpgrade.TYPE_SILK_TOUCH, ItemUpgrade.TYPE_FORTUNE_1, ItemUpgrade.TYPE_FORTUNE_2, ItemUpgrade.TYPE_FORTUNE_3);
 
     private int compare = IComparer.COMPARE_NBT | IComparer.COMPARE_DAMAGE;
     private int mode = IFilterable.WHITELIST;
@@ -103,11 +106,22 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
 
                 if (!frontStack.isEmpty()) {
                     if (IFilterable.canTake(itemFilters, mode, compare, frontStack) && frontBlockState.getBlockHardness(world, front) != -1.0) {
-                        List<ItemStack> drops;
-                        if (upgrades.hasUpgrade(ItemUpgrade.TYPE_SILK_TOUCH) && frontBlock.canSilkHarvest(world, front, frontBlockState, null)) {
-                            drops = Collections.singletonList(frontStack);
+                        NonNullList<ItemStack> drops = NonNullList.create();
+
+                        if (frontBlock instanceof BlockShulkerBox) {
+                            drops.add(((BlockShulkerBox) frontBlock).getItem(world, front, frontBlockState));
+
+                            TileEntity shulkerBoxTile = world.getTileEntity(front);
+
+                            if (shulkerBoxTile instanceof TileEntityShulkerBox) {
+                                // Avoid dropping the shulker box when Block#breakBlock is called
+                                ((TileEntityShulkerBox) shulkerBoxTile).setDestroyedByCreativePlayer(true);
+                                ((TileEntityShulkerBox) shulkerBoxTile).clear();
+                            }
+                        } else if (upgrades.hasUpgrade(ItemUpgrade.TYPE_SILK_TOUCH) && frontBlock.canSilkHarvest(world, front, frontBlockState, null)) {
+                            drops.add(frontStack);
                         } else {
-                            drops = frontBlock.getDrops(world, front, frontBlockState, upgrades.getFortuneLevel());
+                            frontBlock.getDrops(drops, world, front, frontBlockState, upgrades.getFortuneLevel());
                         }
 
                         for (ItemStack drop : drops) {
@@ -186,7 +200,7 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
     public void read(NBTTagCompound tag) {
         super.read(tag);
 
-        RSUtils.readItems(upgrades, 1, tag);
+        StackUtils.readItems(upgrades, 1, tag);
     }
 
     @Override
@@ -198,7 +212,7 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
     public NBTTagCompound write(NBTTagCompound tag) {
         super.write(tag);
 
-        RSUtils.writeItems(upgrades, 1, tag);
+        StackUtils.writeItems(upgrades, 1, tag);
 
         return tag;
     }
@@ -212,8 +226,8 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
         tag.setInteger(NBT_TYPE, type);
         tag.setBoolean(NBT_PICKUP, pickupItem);
 
-        RSUtils.writeItems(itemFilters, 0, tag);
-        RSUtils.writeItems(fluidFilters, 2, tag);
+        StackUtils.writeItems(itemFilters, 0, tag);
+        StackUtils.writeItems(fluidFilters, 2, tag);
 
         return tag;
     }
@@ -238,8 +252,8 @@ public class NetworkNodeDestructor extends NetworkNode implements IComparable, I
             pickupItem = tag.getBoolean(NBT_PICKUP);
         }
 
-        RSUtils.readItems(itemFilters, 0, tag);
-        RSUtils.readItems(fluidFilters, 2, tag);
+        StackUtils.readItems(itemFilters, 0, tag);
+        StackUtils.readItems(fluidFilters, 2, tag);
     }
 
     public IItemHandler getUpgrades() {

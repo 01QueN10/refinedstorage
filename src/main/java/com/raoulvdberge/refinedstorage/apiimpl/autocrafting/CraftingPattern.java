@@ -28,6 +28,7 @@ public class CraftingPattern implements ICraftingPattern {
     private List<List<ItemStack>> oreInputs = new ArrayList<>();
     private List<ItemStack> outputs = new ArrayList<>();
     private List<ItemStack> byproducts = new ArrayList<>();
+    private Integer hashCodeCached = null;
 
     public CraftingPattern(World world, ICraftingPatternContainer container, ItemStack stack) {
         this.container = container;
@@ -54,6 +55,7 @@ public class CraftingPattern implements ICraftingPattern {
             for (IRecipe r : CraftingManager.REGISTRY) {
                 if (r.matches(inv, world)) {
                     recipe = r;
+
                     break;
                 }
             }
@@ -85,7 +87,7 @@ public class CraftingPattern implements ICraftingPattern {
                     }
 
                     for (ItemStack remaining : recipe.getRemainingItems(inv)) {
-                        if (remaining != null) {
+                        if (!remaining.isEmpty()) {
                             ItemStack cleaned = Comparer.stripTags(remaining.copy());
                             byproducts.add(cleaned);
                         }
@@ -93,32 +95,32 @@ public class CraftingPattern implements ICraftingPattern {
                 }
             }
         } else {
-            outputs = ItemPattern.getOutputs(stack).stream().collect(Collectors.toList());
+            outputs = ItemPattern.getOutputs(stack);
         }
 
         if (oreInputs.isEmpty()) {
             for (ItemStack input : inputs) {
-                if (input == null) {
+                if (input == null || input.isEmpty()) {
                     oreInputs.add(Collections.emptyList());
-                } else if (!input.isEmpty()) {
+                } else {
                     int[] ids = OreDictionary.getOreIDs(input);
-                    if (ids == null || ids.length == 0) {
+
+                    if (ids.length == 0) {
                         oreInputs.add(Collections.singletonList(Comparer.stripTags(input)));
                     } else if (isOredict()) {
-                        List<ItemStack> oredict = Arrays.stream(ids)
+                        List<ItemStack> oredictInputs = Arrays.stream(ids)
                             .mapToObj(OreDictionary::getOreName)
                             .map(OreDictionary::getOres)
                             .flatMap(List::stream)
                             .map(ItemStack::copy)
                             .map(Comparer::stripTags)
-                            .map(s -> {
-                                s.setCount(input.getCount());
-                                return s;
-                            })
+                            .peek(s -> s.setCount(input.getCount()))
                             .collect(Collectors.toList());
+
                         // Add original stack as first, should prevent some issues
-                        oredict.add(0, Comparer.stripTags(input.copy()));
-                        oreInputs.add(oredict);
+                        oredictInputs.add(0, Comparer.stripTags(input.copy()));
+
+                        oreInputs.add(oredictInputs);
                     } else {
                         oreInputs.add(Collections.singletonList(Comparer.stripTags(input)));
                     }
@@ -139,7 +141,7 @@ public class CraftingPattern implements ICraftingPattern {
 
     @Override
     public boolean isValid() {
-        return inputs.stream().filter(Objects::nonNull).count() > 0 && !outputs.isEmpty();
+        return !inputs.isEmpty() && inputs.stream().filter(Objects::nonNull).count() > 0 && !outputs.isEmpty();
     }
 
     @Override
@@ -217,7 +219,7 @@ public class CraftingPattern implements ICraftingPattern {
         }
 
         for (ItemStack remaining : recipe.getRemainingItems(inv)) {
-            if (remaining != null) {
+            if (!remaining.isEmpty()) {
                 byproducts.add(remaining.copy());
             }
         }
@@ -272,6 +274,27 @@ public class CraftingPattern implements ICraftingPattern {
             ", outputs=" + outputs +
             ", byproducts=" + byproducts +
             '}';
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return this == obj || (obj instanceof ICraftingPattern && this.alike((ICraftingPattern) obj));
+    }
+
+    @Override
+    public int hashCode() {
+        if (hashCodeCached == null) {
+            hashCodeCached = 0;
+            for (ItemStack outputItemStack : this.getOutputs()) {
+                int itemHashCode = 0;
+                itemHashCode = outputItemStack.getCount();
+                itemHashCode = itemHashCode * 31 + outputItemStack.getItem().hashCode();
+                itemHashCode = itemHashCode * 31 + outputItemStack.getItemDamage();
+                itemHashCode = itemHashCode * 31 + Objects.hashCode(outputItemStack.getTagCompound());
+                hashCodeCached = hashCodeCached * 31 + itemHashCode;
+            }
+        }
+        return hashCodeCached;
     }
 
     @Override
